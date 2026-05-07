@@ -23,7 +23,7 @@ struct ItemListView: View {
     }
 
     private func needShowType(item: Item) -> Bool {
-        if ItemVideoView.isVideo(item: item) {
+        if item.isVideo {
             return true
         }
 
@@ -31,8 +31,7 @@ struct ItemListView: View {
             return true
         }
 
-        let ext = item.ext.lowercased()
-        if ext == "webp" || ext == "gif" {
+        if item.isAnimatedImage {
             return true
         }
 
@@ -185,21 +184,16 @@ private enum ItemMediaFilter: String, CaseIterable, Identifiable {
         case .all:
             return true
         case .photos:
-            return !ItemVideoView.isVideo(item: item)
+            return !item.isVideo
                 && !item.isTextFile
-                && !Self.isAnimated(item)
+                && !item.isAnimatedImage
         case .animated:
-            return Self.isAnimated(item)
+            return item.isAnimatedImage
         case .videos:
-            return ItemVideoView.isVideo(item: item)
+            return item.isVideo
         case .text:
             return item.isTextFile
         }
-    }
-
-    private static func isAnimated(_ item: Item) -> Bool {
-        let ext = item.ext.lowercased()
-        return ext == "gif" || ext == "webp"
     }
 }
 

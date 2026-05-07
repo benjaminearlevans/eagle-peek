@@ -48,24 +48,28 @@ struct ImageDetailView: View {
         }
         
         var urlsToPrefetch: [URL] = []
-        
-        if currentIndex > 0 {
-            let prevItem = items[currentIndex - 1]
-            if !ItemVideoView.isVideo(item: prevItem),
-               !prevItem.isTextFile,
-               let prevURL = getImageURL(for: prevItem)
-            {
-                urlsToPrefetch.append(prevURL)
+
+        for offset in 1 ... 2 {
+            let previousIndex = currentIndex - offset
+            if previousIndex >= 0 {
+                let previousItem = items[previousIndex]
+                if !previousItem.isVideo,
+                   !previousItem.isTextFile,
+                   let previousURL = getImageURL(for: previousItem)
+                {
+                    urlsToPrefetch.append(previousURL)
+                }
             }
-        }
-        
-        if currentIndex < items.count - 1 {
-            let nextItem = items[currentIndex + 1]
-            if !ItemVideoView.isVideo(item: nextItem),
-               !nextItem.isTextFile,
-               let nextURL = getImageURL(for: nextItem)
-            {
-                urlsToPrefetch.append(nextURL)
+
+            let nextIndex = currentIndex + offset
+            if nextIndex < items.count {
+                let nextItem = items[nextIndex]
+                if !nextItem.isVideo,
+                   !nextItem.isTextFile,
+                   let nextURL = getImageURL(for: nextItem)
+                {
+                    urlsToPrefetch.append(nextURL)
+                }
             }
         }
         
@@ -81,8 +85,10 @@ struct ImageDetailView: View {
                 guard scale == 1 else { return }
                 guard !selectedItem.isTextFile else { return }
 
-                let w = abs(value.translation.width), h = value.translation.height
-                if h > 10, w < 20, w / h < 0.2 {
+                let w = abs(value.translation.width)
+                let h = value.translation.height
+                let predictedH = value.predictedEndTranslation.height
+                if (h > 70 || predictedH > 140), w < max(44, h * 0.35) {
                     dismiss(selectedItem)
                 }
             }
@@ -124,6 +130,15 @@ struct ImageDetailView: View {
 
         return isNoUI ? .black : Color(.systemBackground)
     }
+
+    private var selectedIndex: Int? {
+        items.firstIndex(where: { $0.itemId == selectedItem.itemId })
+    }
+
+    private var viewerSubtitle: String {
+        let position = (selectedIndex ?? 0) + 1
+        return String(localized: "\(position) of \(items.count) - \(selectedItem.mediaKindLabel)")
+    }
     
     var body: some View {
         GeometryReader { geometry in
@@ -131,13 +146,22 @@ struct ImageDetailView: View {
             let titleButton = Button(action: {
                 isInfoPresented.toggle()
             }) {
-                HStack(spacing: 8) {
-                    Text(selectedItem.name)
-                        .font(.headline)
+                VStack(spacing: 1) {
+                    HStack(spacing: 8) {
+                        Text(selectedItem.name)
+                            .font(.headline)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+
+                        Image(systemName: "info.circle")
+                            .font(.body.weight(.regular))
+                            .accessibilityHidden(true)
+                    }
+
+                    Text(viewerSubtitle)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
                         .lineLimit(1)
-                        .truncationMode(.tail)
-                    Image(systemName: "info.circle")
-                        .font(.body.weight(.regular))
                 }
                 .foregroundColor(.primary)
                 .frame(height: 44)
@@ -145,6 +169,8 @@ struct ImageDetailView: View {
             }
             .buttonStyle(.plain)
             .regularGlassEffect(interactive: true)
+            .accessibilityLabel("\(selectedItem.name), \(viewerSubtitle)")
+            .accessibilityHint("Shows item information")
 
             ZStack {
                 backgroundColor
@@ -156,7 +182,7 @@ struct ImageDetailView: View {
                             let isItemSelected = (mainScrollId ?? selectedItem.itemId) == item.itemId
 
                             Group {
-                                if ItemVideoView.isVideo(item: item) {
+                                if item.isVideo {
                                     ItemVideoView(
                                         item: item,
                                         isSelected: isItemSelected,
@@ -198,28 +224,41 @@ struct ImageDetailView: View {
                 .simultaneousGesture(dragCloseGesture())
                 
                 if !isNoUI {
-                    VStack {
+                    VStack(spacing: 8) {
                         Spacer()
                         ScrollView(.horizontal) {
-                            LazyHStack(spacing: 3) {
-                                let selectedIndex = items.firstIndex(where: { $0.itemId == selectedItem.itemId })
+                            LazyHStack(spacing: 5) {
                                 ForEach(Array(items.enumerated()), id: \.element.itemId) { index, item in
                                     let isSelected = !isThumbnailScrolling && item.itemId == selectedItem.itemId
                                     let isBeforeSelected = selectedIndex != nil && !isThumbnailScrolling && index < selectedIndex!
                                     let isAfterSelected = selectedIndex != nil && !isThumbnailScrolling && index > selectedIndex!
-                                    
-                                    ItemThumbnailView(item: item, textThumbnailStyle: .detailSlider)
-                                        .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
-                                        .aspectRatio(isSelected ? 1.0 : 0.7, contentMode: .fill)
-                                        .clipShape(RoundedRectangle(cornerRadius: 3))
-                                        .contentShape(RoundedRectangle(cornerRadius: 3))
-                                        .offset(x: isBeforeSelected ? -8 : (isAfterSelected ? 8 : 0))
-                                        .animation(.easeInOut(duration: 0.2), value: selectedItem.itemId)
-                                        .animation(.easeInOut(duration: 0.2), value: isThumbnailScrolling)
-                                        .onTapGesture {
-                                            thumbnailScrollId = item.itemId
-                                        }
-                                        .id(item.itemId)
+
+                                    Button {
+                                        thumbnailScrollId = item.itemId
+                                    } label: {
+                                        ItemThumbnailView(item: item, textThumbnailStyle: .detailSlider)
+                                            .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
+                                            .aspectRatio(isSelected ? 1.0 : 0.72, contentMode: .fill)
+                                            .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
+                                            .overlay {
+                                                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                                                    .stroke(
+                                                        isSelected ? Color.accentColor : Color.white.opacity(0.28),
+                                                        lineWidth: isSelected ? 2 : 1
+                                                    )
+                                            }
+                                            .shadow(color: .black.opacity(isSelected ? 0.24 : 0), radius: 5, y: 2)
+                                    }
+                                    .buttonStyle(.plain)
+                                    .contentShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
+                                    .offset(x: isBeforeSelected ? -10 : (isAfterSelected ? 10 : 0))
+                                    .scaleEffect(isSelected ? 1.04 : 1)
+                                    .accessibilityLabel("\(item.name), \(index + 1) of \(items.count)")
+                                    .accessibilityValue(isSelected ? String(localized: "Selected") : item.mediaKindLabel)
+                                    .accessibilityHint("Shows this item")
+                                    .id(item.itemId)
+                                    .animation(.easeInOut(duration: 0.2), value: selectedItem.itemId)
+                                    .animation(.easeInOut(duration: 0.2), value: isThumbnailScrolling)
                                 }
                             }
                             .scrollTargetLayout()
@@ -227,8 +266,8 @@ struct ImageDetailView: View {
                         .scrollIndicators(.hidden)
                         .scrollTargetBehavior(.viewAligned)
                         .scrollPosition(id: $thumbnailScrollId, anchor: .center)
-                        .safeAreaPadding(.horizontal, geometry.size.width / 2 - 15)
-                        .frame(height: 30)
+                        .safeAreaPadding(.horizontal, geometry.size.width / 2 - 22)
+                        .frame(height: 44)
                         .frame(minWidth: geometry.size.width)
                         .clipShape(.rect)
                         .mask {
@@ -279,6 +318,7 @@ struct ImageDetailView: View {
                         Image(systemName: "chevron.down")
                             .foregroundColor(.primary)
                     }
+                    .accessibilityLabel("Close viewer")
                 }
 
                 ToolbarItem(placement: .principal) {
@@ -294,6 +334,7 @@ struct ImageDetailView: View {
                             Image(systemName: "square.and.arrow.up")
                                 .foregroundColor(.primary)
                         }
+                        .accessibilityLabel("Share item")
                     }
                 }
             }

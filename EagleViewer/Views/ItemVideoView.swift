@@ -12,7 +12,7 @@ import UIKit
 
 struct ItemVideoView: View {
     static func isVideo(item: Item) -> Bool {
-        return item.duration != 0
+        item.isVideo
     }
 
     let item: Item
