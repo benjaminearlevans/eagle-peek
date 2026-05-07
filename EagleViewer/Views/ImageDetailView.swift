@@ -36,11 +36,13 @@ struct ImageDetailView: View {
     }
     
     private func getImageURL(for item: Item) -> URL? {
-        guard let currentLibraryURL = libraryFolderManager.currentLibraryURL else {
+        guard case .available(let url) = MediaFileResolver(libraryURL: libraryFolderManager.currentLibraryURL)
+            .resolve(.original, for: item)
+        else {
             return nil
         }
-        
-        return currentLibraryURL.appending(path: item.imagePath, directoryHint: .notDirectory)
+
+        return url
     }
     
     private func prefetchAdjacentImages(for item: Item) {

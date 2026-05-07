@@ -43,19 +43,23 @@ struct ItemVideoView: View {
     @Environment(\.scenePhase) private var scenePhase
 
     private var videoURL: URL? {
-        guard let currentLibraryURL = libraryFolderManager.currentLibraryURL else {
+        guard case .available(let url) = MediaFileResolver(libraryURL: libraryFolderManager.currentLibraryURL)
+            .resolve(.original, for: item)
+        else {
             return nil
         }
 
-        return currentLibraryURL.appending(path: item.imagePath, directoryHint: .notDirectory)
+        return url
     }
 
     private var thumbnailURL: URL? {
-        guard let currentLibraryURL = libraryFolderManager.currentLibraryURL else {
+        guard case .available(let url) = MediaFileResolver(libraryURL: libraryFolderManager.currentLibraryURL)
+            .resolve(.thumbnail, for: item)
+        else {
             return nil
         }
 
-        return currentLibraryURL.appending(path: item.thumbnailPath, directoryHint: .notDirectory)
+        return url
     }
 
     private var sliderRange: ClosedRange<Double> {
@@ -195,6 +199,11 @@ struct ItemVideoView: View {
                 .animation(.easeInOut(duration: 0.25), value: isNoUI)
 
             activeVideoContent
+                .overlay {
+                    if videoURL == nil {
+                        MediaUnavailableMessage(systemImage: "video.badge.exclamationmark")
+                    }
+                }
 
             if isSelected {
                 Color.clear
@@ -493,6 +502,25 @@ struct ItemVideoView: View {
         guard let player, let token = timeObserverToken else { return }
         player.removeTimeObserver(token)
         timeObserverToken = nil
+    }
+}
+
+private struct MediaUnavailableMessage: View {
+    let systemImage: String
+
+    var body: some View {
+        VStack(spacing: 12) {
+            Image(systemName: systemImage)
+                .font(.system(size: 36, weight: .regular))
+                .foregroundStyle(.secondary)
+
+            Text("Media unavailable")
+                .font(.callout.weight(.medium))
+                .foregroundStyle(.secondary)
+        }
+        .multilineTextAlignment(.center)
+        .padding(24)
+        .accessibilityElement(children: .combine)
     }
 }
 

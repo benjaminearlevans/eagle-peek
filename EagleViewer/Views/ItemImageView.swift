@@ -13,12 +13,9 @@ struct ItemImageView: View {
     let isSelected: Bool
     @EnvironmentObject private var libraryFolderManager: LibraryFolderManager
 
-    private var imageURL: URL? {
-        guard let currentLibraryURL = libraryFolderManager.currentLibraryURL else {
-            return nil
-        }
-
-        return currentLibraryURL.appending(path: item.imagePath, directoryHint: .notDirectory)
+    private var mediaResolution: MediaFileResolution {
+        MediaFileResolver(libraryURL: libraryFolderManager.currentLibraryURL)
+            .resolve(.original, for: item)
     }
 
     private var aspectRatio: CGSize {
@@ -27,7 +24,7 @@ struct ItemImageView: View {
 
     var body: some View {
         Group {
-            if let imageURL {
+            if case .available(let imageURL) = mediaResolution {
                 if item.isAnimatedImage {
                     AnimatedImageView(
                         url: imageURL,
@@ -49,10 +46,22 @@ struct ItemImageView: View {
                     }
                 }
             } else {
-                placeholder(systemImage: "photo")
+                unavailablePlaceholder
             }
         }
         .accessibilityLabel(item.name)
+    }
+
+    private var unavailablePlaceholder: some View {
+        placeholder(systemImage: "photo.badge.exclamationmark")
+            .overlay(alignment: .bottom) {
+                Text("Media unavailable")
+                    .font(.footnote.weight(.medium))
+                    .foregroundStyle(.secondary)
+                    .padding(.bottom, 24)
+                    .padding(.horizontal, 16)
+                    .multilineTextAlignment(.center)
+            }
     }
 
     private func placeholder(systemImage: String?, showsProgress: Bool = false) -> some View {

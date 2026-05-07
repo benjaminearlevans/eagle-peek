@@ -60,6 +60,49 @@ final class SyncOperationRepositoryTests: XCTestCase {
         XCTAssertTrue(operations.isEmpty)
     }
 
+    func test_operationCount_withMatchingStates_shouldReturnOnlyMatchingOperationCount() async throws {
+        // Arrange
+        let repositories = Repositories.empty()
+        let library = try await createLibrary(in: repositories)
+        var failedOperation = operation(libraryId: library.id)
+        failedOperation.state = .failed
+        let pendingOperation = operation(libraryId: library.id)
+        try await repositories.syncOperation.enqueue(failedOperation)
+        try await repositories.syncOperation.enqueue(pendingOperation)
+
+        // Act
+        let count = try await repositories.syncOperation.operationCount(for: library.id, states: [.pending])
+
+        // Assert
+        XCTAssertEqual(count, 1)
+    }
+
+    func test_resetOperations_withFailedAndConflictedStates_shouldMakeOperationsPending() async throws {
+        // Arrange
+        let repositories = Repositories.empty()
+        let library = try await createLibrary(in: repositories)
+        var failedOperation = operation(libraryId: library.id)
+        failedOperation.state = .failed
+        failedOperation.failureMessage = "Network offline"
+        var conflictedOperation = operation(libraryId: library.id)
+        conflictedOperation.state = .conflicted
+        conflictedOperation.failureMessage = "Changed on desktop"
+        try await repositories.syncOperation.enqueue(failedOperation)
+        try await repositories.syncOperation.enqueue(conflictedOperation)
+
+        // Act
+        let resetCount = try await repositories.syncOperation.resetOperations(
+            for: library.id,
+            states: [.failed, .conflicted]
+        )
+        let pendingOperations = try await repositories.syncOperation.pendingOperations(for: library.id)
+
+        // Assert
+        XCTAssertEqual(resetCount, 2)
+        XCTAssertEqual(pendingOperations.count, 2)
+        XCTAssertTrue(pendingOperations.allSatisfy { $0.failureMessage == nil })
+    }
+
     private func operation(
         libraryId: Int64,
         createdAt: Date = Date()

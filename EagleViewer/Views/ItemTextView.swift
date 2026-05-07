@@ -21,12 +21,9 @@ struct ItemTextView: View {
     @State private var isLoading = false
     @State private var isMarkdownReady = false
 
-    private var fileURL: URL? {
-        guard let currentLibraryURL = libraryFolderManager.currentLibraryURL else {
-            return nil
-        }
-
-        return currentLibraryURL.appending(path: item.imagePath, directoryHint: .notDirectory)
+    private var fileResolution: MediaFileResolution {
+        MediaFileResolver(libraryURL: libraryFolderManager.currentLibraryURL)
+            .resolve(.original, for: item)
     }
 
     var body: some View {
@@ -54,7 +51,7 @@ struct ItemTextView: View {
                     Image(systemName: "doc.plaintext")
                         .font(.system(size: 40, weight: .regular))
                         .foregroundColor(.secondary)
-                    Text(errorMessage ?? "Unable to load text file.")
+                    Text(errorMessage ?? String(localized: "Unable to load text file."))
                         .font(.callout)
                         .foregroundColor(.secondary)
                 }
@@ -76,10 +73,10 @@ struct ItemTextView: View {
             isMarkdownReady = !item.isMarkdownFile
         }
 
-        guard let fileURL else {
+        guard case .available(let fileURL) = fileResolution else {
             await MainActor.run {
                 isLoading = false
-                errorMessage = "File not available."
+                errorMessage = String(localized: "Media unavailable.")
             }
             return
         }
@@ -91,7 +88,7 @@ struct ItemTextView: View {
                 if let decoded {
                     textContent = decoded
                 } else {
-                    errorMessage = "Unable to decode text file."
+                    errorMessage = String(localized: "Unable to decode text file.")
                 }
             }
             if item.isMarkdownFile, decoded != nil {
@@ -101,7 +98,7 @@ struct ItemTextView: View {
             }
         } catch {
             await MainActor.run {
-                errorMessage = error.localizedDescription
+                    errorMessage = error.localizedDescription
             }
         }
 

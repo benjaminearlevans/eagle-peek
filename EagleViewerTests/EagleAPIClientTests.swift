@@ -134,6 +134,57 @@ final class EagleAPIClientTests: XCTestCase {
             XCTAssertEqual(message, "Token rejected")
         }
     }
+
+    func test_appInfo_withTransientNetworkFailure_shouldRetryAndDecodePayload() async throws {
+        // Arrange
+        let data = Data("""
+        {
+          "status": "success",
+          "data": {
+            "version": "4.0.0"
+          }
+        }
+        """.utf8)
+        let transport = FlakyEagleAPITransport(result: .success(data), failsFirstRequest: true)
+        let client = EagleAPIClient(
+            configuration: .localhost(),
+            transport: transport,
+            retryPolicy: EagleAPIRetryPolicy(maxAttempts: 2, delayNanoseconds: 0)
+        )
+
+        // Act
+        let info = try await client.appInfo()
+        let requestCount = await transport.requestCount
+
+        // Assert
+        XCTAssertEqual(info.version, "4.0.0")
+        XCTAssertEqual(requestCount, 2)
+    }
+
+    func test_appInfo_withAPIStatusError_shouldNotRetry() async throws {
+        // Arrange
+        let data = Data("""
+        {
+          "status": "error",
+          "message": "Token rejected"
+        }
+        """.utf8)
+        let transport = FlakyEagleAPITransport(result: .success(data), failsFirstRequest: false)
+        let client = EagleAPIClient(
+            configuration: .localhost(),
+            transport: transport,
+            retryPolicy: EagleAPIRetryPolicy(maxAttempts: 2, delayNanoseconds: 0)
+        )
+
+        // Act & Assert
+        do {
+            _ = try await client.appInfo()
+            XCTFail("Expected EagleAPIError.apiStatus")
+        } catch EagleAPIError.apiStatus {
+            let requestCount = await transport.requestCount
+            XCTAssertEqual(requestCount, 1)
+        }
+    }
 }
 
 private struct MockEagleAPITransport: EagleAPITransport {
@@ -154,5 +205,42 @@ private struct MockEagleAPITransport: EagleAPITransport {
         )!
 
         return (data, response)
+    }
+}
+
+private actor FlakyEagleAPITransport: EagleAPITransport {
+    enum ResultPayload {
+        case success(Data)
+        case failure(Error)
+    }
+
+    private let result: ResultPayload
+    private let failsFirstRequest: Bool
+    private(set) var requestCount = 0
+
+    init(result: ResultPayload, failsFirstRequest: Bool) {
+        self.result = result
+        self.failsFirstRequest = failsFirstRequest
+    }
+
+    func data(for request: URLRequest) async throws -> (Data, URLResponse) {
+        requestCount += 1
+
+        if failsFirstRequest && requestCount == 1 {
+            throw URLError(.timedOut)
+        }
+
+        switch result {
+        case .success(let data):
+            let response = HTTPURLResponse(
+                url: request.url!,
+                statusCode: 200,
+                httpVersion: nil,
+                headerFields: nil
+            )!
+            return (data, response)
+        case .failure(let error):
+            throw error
+        }
     }
 }

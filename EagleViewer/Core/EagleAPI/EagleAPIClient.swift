@@ -18,17 +18,20 @@ struct EagleAPIClient {
     private let transport: EagleAPITransport
     private let encoder: JSONEncoder
     private let decoder: JSONDecoder
+    private let retryPolicy: EagleAPIRetryPolicy
 
     init(
         configuration: EagleAPIConfiguration,
         transport: EagleAPITransport = URLSession.shared,
         encoder: JSONEncoder = JSONEncoder(),
-        decoder: JSONDecoder = JSONDecoder()
+        decoder: JSONDecoder = JSONDecoder(),
+        retryPolicy: EagleAPIRetryPolicy = .default
     ) {
         self.configuration = configuration
         self.transport = transport
         self.encoder = encoder
         self.decoder = decoder
+        self.retryPolicy = retryPolicy
     }
 
     func appInfo() async throws -> EagleAppInfo {
@@ -91,6 +94,23 @@ struct EagleAPIClient {
     }
 
     private func send<Value: Decodable>(_ request: URLRequest) async throws -> Value {
+        var attempt = 1
+
+        while true {
+            do {
+                return try await sendOnce(request)
+            } catch {
+                guard attempt < retryPolicy.maxAttempts, retryPolicy.shouldRetry(error: error) else {
+                    throw error
+                }
+
+                attempt += 1
+                try await Task.sleep(nanoseconds: retryPolicy.delayNanoseconds)
+            }
+        }
+    }
+
+    private func sendOnce<Value: Decodable>(_ request: URLRequest) async throws -> Value {
         let (data, response) = try await transport.data(for: request)
 
         guard let httpResponse = response as? HTTPURLResponse else {

@@ -14,6 +14,7 @@ struct SyncIssuesView: View {
     @EnvironmentObject private var metadataImportManager: MetadataImportManager
     @EnvironmentObject private var libraryFolderManager: LibraryFolderManager
     @Query(SyncIssuesRequest(libraryId: nil)) private var issues: [SyncIssue]
+    @State private var isRetryingQueuedEdits = false
 
     var body: some View {
         List {
@@ -87,6 +88,15 @@ struct SyncIssuesView: View {
                 } label: {
                     Label("Full Resync", systemImage: "arrow.clockwise.circle")
                 }
+
+                if canRetryQueuedEdits {
+                    Button {
+                        retryQueuedEdits()
+                    } label: {
+                        Label("Retry Queued Edits", systemImage: "arrow.uturn.forward.circle")
+                    }
+                    .disabled(isRetryingQueuedEdits)
+                }
             }
 
             Label(recoveryTip, systemImage: "lightbulb")
@@ -107,11 +117,25 @@ struct SyncIssuesView: View {
     }
 
     private var recoveryTip: String {
+        if library.isEagleAPISource {
+            return String(localized: "For API libraries, keep Eagle Desktop running and retry queued edits after the connection is restored.")
+        }
+
         if library.useLocalStorage {
             return String(localized: "For local libraries, keep the Eagle library folder available until sync finishes.")
         }
 
         return String(localized: "If folder access was interrupted, retry sync first. Use Full Resync only when items still look stale.")
+    }
+
+    private var canRetryQueuedEdits: Bool {
+        guard library.eagleAPIConfiguration != nil else {
+            return false
+        }
+
+        return issues.contains { issue in
+            issue.category == .queuedEdit || issue.category == .conflict
+        }
     }
 
     private func startImporting(fullImport: Bool) {
@@ -129,6 +153,41 @@ struct SyncIssuesView: View {
     private func markIssue(_ issue: SyncIssue, as state: SyncIssueResolutionState) {
         Task {
             try? await repositories.syncIssue.markIssue(id: issue.id, as: state)
+        }
+    }
+
+    private func retryQueuedEdits() {
+        guard let configuration = library.eagleAPIConfiguration else {
+            return
+        }
+
+        isRetryingQueuedEdits = true
+        Task {
+            do {
+                try await repositories.syncIssue.markOpenIssues(
+                    for: library.id,
+                    categories: [.queuedEdit, .conflict],
+                    as: .retrying
+                )
+                let service = QueuedEditReplayService(
+                    dbWriter: repositories.dbWriter,
+                    apiClient: EagleAPIClient(configuration: configuration)
+                )
+                _ = try await service.retryFailedAndConflictedEdits(for: library.id)
+            } catch {
+                try? await repositories.syncIssue.save(SyncIssue(
+                    libraryId: library.id,
+                    category: .queuedEdit,
+                    severity: .error,
+                    title: String(localized: "Queued edit retry failed"),
+                    message: error.localizedDescription,
+                    recoverySuggestion: String(localized: "Check the connection to Eagle Desktop, then retry queued edits.")
+                ))
+            }
+
+            await MainActor.run {
+                isRetryingQueuedEdits = false
+            }
         }
     }
 }

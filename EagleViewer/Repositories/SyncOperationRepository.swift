@@ -25,6 +25,29 @@ struct SyncOperationRepository: SyncOperationQueue {
         try await operations(for: libraryId, states: [.pending])
     }
 
+    func operationCount(for libraryId: Int64, states: [SyncOperationState]) async throws -> Int {
+        guard !states.isEmpty else {
+            return 0
+        }
+
+        let placeholders = Array(repeating: "?", count: states.count).joined(separator: ", ")
+        var arguments: StatementArguments = [libraryId]
+        arguments += StatementArguments(states.map(\.rawValue))
+        let queryArguments = arguments
+
+        return try await dbWriter.read { db in
+            try Int.fetchOne(
+                db,
+                sql: """
+                SELECT COUNT(*)
+                FROM syncOperation
+                WHERE libraryId = ? AND state IN (\(placeholders))
+                """,
+                arguments: queryArguments
+            ) ?? 0
+        }
+    }
+
     func operations(for libraryId: Int64, states: [SyncOperationState]) async throws -> [SyncOperation] {
         guard !states.isEmpty else {
             return []
@@ -62,20 +85,33 @@ struct SyncOperationRepository: SyncOperationQueue {
     }
 
     func resetInterruptedOperations(for libraryId: Int64) async throws {
-        try await dbWriter.write { db in
+        _ = try await resetOperations(for: libraryId, states: [.applying])
+    }
+
+    func resetOperations(for libraryId: Int64, states: [SyncOperationState]) async throws -> Int {
+        guard !states.isEmpty else {
+            return 0
+        }
+
+        let placeholders = Array(repeating: "?", count: states.count).joined(separator: ", ")
+        var arguments: StatementArguments = [
+            SyncOperationState.pending.rawValue,
+            Date(),
+            libraryId,
+        ]
+        arguments += StatementArguments(states.map(\.rawValue))
+        let queryArguments = arguments
+
+        return try await dbWriter.write { db in
             try db.execute(
                 sql: """
                 UPDATE syncOperation
-                SET state = ?, updatedAt = ?
-                WHERE libraryId = ? AND state = ?
+                SET state = ?, updatedAt = ?, failureMessage = NULL
+                WHERE libraryId = ? AND state IN (\(placeholders))
                 """,
-                arguments: [
-                    SyncOperationState.pending.rawValue,
-                    Date(),
-                    libraryId,
-                    SyncOperationState.applying.rawValue,
-                ]
+                arguments: queryArguments
             )
+            return db.changesCount
         }
     }
 

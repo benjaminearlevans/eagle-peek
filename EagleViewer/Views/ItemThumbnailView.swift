@@ -47,9 +47,21 @@ struct ThumbnailView: View {
 }
 
 struct ThumbnailError: View {
+    let systemImage: String
+
+    init(systemImage: String = "photo.badge.exclamationmark") {
+        self.systemImage = systemImage
+    }
+
     var body: some View {
         Rectangle()
             .fill(AppTheme.Colors.placeholderFill)
+            .overlay {
+                Image(systemName: systemImage)
+                    .foregroundStyle(AppTheme.Colors.placeholderSymbol)
+                    .font(.system(size: 22, weight: .regular))
+                    .accessibilityHidden(true)
+            }
     }
 }
 
@@ -134,12 +146,9 @@ struct ItemThumbnailView: View {
         _isPlaceholder = isPlaceholder
     }
     
-    private var imageURL: URL? {
-        guard let currentLibraryUrl = libraryFolderManager.currentLibraryURL else {
-            return nil
-        }
-        
-        return currentLibraryUrl.appending(path: item.thumbnailPath, directoryHint: .notDirectory)
+    private var mediaResolution: MediaFileResolution {
+        MediaFileResolver(libraryURL: libraryFolderManager.currentLibraryURL)
+            .resolve(.thumbnail, for: item)
     }
     
     var body: some View {
@@ -149,13 +158,14 @@ struct ItemThumbnailView: View {
                 itemName: item.name,
                 isPlaceholder: $isPlaceholder
             )
-        } else if let imageURL {
+        } else if case .available(let imageURL) = mediaResolution {
             ThumbnailView(url: imageURL, isPlaceholder: $isPlaceholder)
         } else {
             ThumbnailError()
                 .onAppear {
                     isPlaceholder = true
                 }
+                .accessibilityLabel("Media unavailable")
         }
     }
 }
