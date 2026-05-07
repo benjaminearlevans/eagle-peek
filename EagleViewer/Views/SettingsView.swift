@@ -41,38 +41,74 @@ struct SettingsView: View {
                 }
 
                 Section("Sync") {
-                    LabeledContent("Status") {
-                        if metadataImportManager.isImporting {
-                            HStack(spacing: 8) {
-                                ProgressView(value: metadataImportManager.importProgress)
-                                    .progressViewStyle(.linear)
-                                    .frame(width: 60)
-                                Text(verbatim: "\(Int(metadataImportManager.importProgress * 100))%")
-                            }
-                        } else {
-                            Text(library.lastImportStatus.displayText)
+                    SyncStatusSummaryView(
+                        library: library,
+                        isImporting: metadataImportManager.isImporting,
+                        progress: metadataImportManager.importProgress
+                    )
+
+                    if let lastSuccessfulImportAt = library.lastSuccessfulImportAt {
+                        LabeledContent("Last successful sync") {
+                            Text(lastSuccessfulImportAt.formatted(date: .abbreviated, time: .shortened))
+                                .foregroundStyle(.secondary)
                         }
                     }
 
+                    if let lastImportFinishedAt = library.lastImportFinishedAt {
+                        LabeledContent("Last attempt") {
+                            Text(lastImportFinishedAt.formatted(date: .abbreviated, time: .shortened))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+
+                    if library.lastImportFailureCount > 0 {
+                        LabeledContent("Items with issues") {
+                            Text(library.lastImportFailureCount.formatted())
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+
+                    if let lastImportError = library.lastImportError, !lastImportError.isEmpty {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Label("Latest sync issue", systemImage: "exclamationmark.triangle.fill")
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(syncAttentionColor)
+
+                            Text(lastImportError)
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                                .textSelection(.enabled)
+                        }
+                        .accessibilityElement(children: .combine)
+                    }
+
                     if metadataImportManager.isImporting {
-                        Button("Stop Syncing") {
+                        Button("Stop Syncing", role: .destructive) {
                             metadataImportManager.cancelImporting()
                         }
-                        .foregroundColor(.red)
                     } else {
-                        Menu {
-                            Button("Sync New & Modified") {
-                                startImporting(fullImport: false)
-                            }
-
-                            Button("Full Resync") {
-                                startImporting(fullImport: true)
-                            }
+                        Button {
+                            startImporting(fullImport: false)
                         } label: {
-                            Text("Sync Now...")
-                                .foregroundColor(.accentColor)
+                            Label("Sync New & Modified", systemImage: "arrow.trianglehead.clockwise")
                         }
-                        .disabled(libraryFolderManager.accessState != .open)
+                        .foregroundColor(.accentColor)
+
+                        Button {
+                            startImporting(fullImport: true)
+                        } label: {
+                            Label("Full Resync", systemImage: "arrow.clockwise.circle")
+                        }
+                        .foregroundColor(.accentColor)
+                    }
+
+                    if !library.useLocalStorage && libraryFolderManager.accessState == .closed {
+                        Label(
+                            "Folder access is closed. Sync will try to reopen the saved library bookmark.",
+                            systemImage: "folder.badge.questionmark"
+                        )
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
                     }
                 }
             }
@@ -99,8 +135,20 @@ struct SettingsView: View {
         }
     }
 
+    private var syncAttentionColor: Color {
+        switch library.lastImportStatus {
+        case .partial, .cancelled:
+            return .orange
+        case .failed:
+            return .red
+        case .none, .success:
+            return .secondary
+        }
+    }
+
     private func startImporting(fullImport: Bool) {
-        _ = Task {
+        Task {
+            _ = try? await libraryFolderManager.getActiveLibraryURL()
             await metadataImportManager.startImporting(
                 library: library,
                 activeLibraryURL: libraryFolderManager.activeLibraryURL,
@@ -118,6 +166,225 @@ struct SettingsView: View {
             } catch {
                 // Handle error
             }
+        }
+    }
+}
+
+struct SyncStatusSummaryView: View {
+    let library: Library
+    let isImporting: Bool
+    let progress: Double
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: statusSymbolName)
+                    .font(.title3)
+                    .foregroundStyle(statusColor)
+                    .frame(width: 28)
+                    .accessibilityHidden(true)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(statusTitle)
+                        .font(.headline)
+
+                    Text(statusMessage)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+
+            if isImporting {
+                HStack(spacing: 12) {
+                    ProgressView(value: progress)
+                        .progressViewStyle(.linear)
+
+                    Text(verbatim: "\(Int(progress * 100))%")
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                        .frame(minWidth: 36, alignment: .trailing)
+                }
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("Sync progress")
+                .accessibilityValue("\(Int(progress * 100)) percent")
+            }
+        }
+        .padding(.vertical, 4)
+        .accessibilityElement(children: .combine)
+    }
+
+    private var statusTitle: String {
+        if isImporting {
+            return String(localized: "Syncing")
+        }
+
+        return library.lastImportStatus.displayText
+    }
+
+    private var statusMessage: String {
+        if isImporting {
+            return String(localized: "Checking library changes and copying media safely.")
+        }
+
+        switch library.lastImportStatus {
+        case .none:
+            return String(localized: "This library has not synced yet.")
+        case .success:
+            if let lastSuccessfulImportAt = library.lastSuccessfulImportAt {
+                return String(localized: "Up to date as of \(lastSuccessfulImportAt.formatted(date: .abbreviated, time: .shortened)).")
+            }
+            return String(localized: "The last sync completed successfully.")
+        case .partial:
+            return String(localized: "\(issueCountText) could not sync. Successful changes were still saved.")
+        case .failed:
+            return library.lastImportError ?? String(localized: "The last sync could not finish.")
+        case .cancelled:
+            return String(localized: "The last sync was stopped before it finished.")
+        }
+    }
+
+    private var issueCountText: String {
+        if library.lastImportFailureCount == 1 {
+            return String(localized: "1 item")
+        }
+
+        return String(localized: "\(library.lastImportFailureCount) items")
+    }
+
+    private var statusSymbolName: String {
+        if isImporting {
+            return "arrow.trianglehead.2.clockwise.rotate.90"
+        }
+
+        switch library.lastImportStatus {
+        case .none:
+            return "icloud.slash"
+        case .success:
+            return "checkmark.circle.fill"
+        case .partial:
+            return "exclamationmark.triangle.fill"
+        case .failed:
+            return "xmark.octagon.fill"
+        case .cancelled:
+            return "pause.circle.fill"
+        }
+    }
+
+    private var statusColor: Color {
+        if isImporting {
+            return .accentColor
+        }
+
+        switch library.lastImportStatus {
+        case .none:
+            return .secondary
+        case .success:
+            return .green
+        case .partial, .cancelled:
+            return .orange
+        case .failed:
+            return .red
+        }
+    }
+}
+
+struct SyncStatusBanner: View {
+    let library: Library
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: symbolName)
+                .font(.headline)
+                .foregroundStyle(color)
+                .frame(width: 24)
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.primary)
+
+                Text(message)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
+
+            Spacer(minLength: 8)
+
+            Image(systemName: "chevron.right")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.tertiary)
+                .accessibilityHidden(true)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(color.opacity(0.28), lineWidth: 1)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(title)
+        .accessibilityHint("Opens sync settings")
+    }
+
+    private var title: String {
+        switch library.lastImportStatus {
+        case .partial:
+            return String(localized: "Sync completed with issues")
+        case .failed:
+            return String(localized: "Sync failed")
+        case .cancelled:
+            return String(localized: "Sync stopped")
+        case .none, .success:
+            return library.lastImportStatus.displayText
+        }
+    }
+
+    private var message: String {
+        switch library.lastImportStatus {
+        case .partial:
+            if library.lastImportFailureCount == 1 {
+                return String(localized: "1 item needs attention. Tap for details and recovery.")
+            }
+
+            return String(localized: "\(library.lastImportFailureCount) items need attention. Tap for details and recovery.")
+        case .failed:
+            return library.lastImportError ?? String(localized: "Tap to review the latest issue and retry.")
+        case .cancelled:
+            return String(localized: "Tap to resume syncing when you are ready.")
+        case .none, .success:
+            return String(localized: "Tap to review sync settings.")
+        }
+    }
+
+    private var symbolName: String {
+        switch library.lastImportStatus {
+        case .partial:
+            return "exclamationmark.triangle.fill"
+        case .failed:
+            return "xmark.octagon.fill"
+        case .cancelled:
+            return "pause.circle.fill"
+        case .none:
+            return "icloud.slash"
+        case .success:
+            return "checkmark.circle.fill"
+        }
+    }
+
+    private var color: Color {
+        switch library.lastImportStatus {
+        case .partial, .cancelled:
+            return .orange
+        case .failed:
+            return .red
+        case .none:
+            return .secondary
+        case .success:
+            return .green
         }
     }
 }

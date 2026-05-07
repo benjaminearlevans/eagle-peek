@@ -93,7 +93,7 @@ struct MainView: View {
 
                 libraryAccessTask = Task {
                     // start importing after folder access established
-                    _ = try await libraryFolderManager.getActiveLibraryURL()
+                    _ = try? await libraryFolderManager.getActiveLibraryURL()
                     try Task.checkCancellation()
                     await startImportingForCurrentLibrary()
                 }
