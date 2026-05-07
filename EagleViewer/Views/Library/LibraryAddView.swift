@@ -12,6 +12,7 @@ import UniformTypeIdentifiers
 struct LibraryAddView: View {
     enum Destination: Hashable {
         case folderSelect
+        case apiMediaFolderSelect
     }
 
     private enum ConnectionMode: String, CaseIterable, Identifiable {
@@ -34,7 +35,12 @@ struct LibraryAddView: View {
 
     private enum FormData {
         case folder(name: String, bookmarkData: Data, useLocalStorage: Bool)
-        case eagleAPI(baseURL: URL, token: String?)
+        case eagleAPI(connection: APIConnectionData, libraryInfo: EagleLibraryInfo, mediaBookmarkData: Data)
+    }
+
+    private struct APIConnectionData: Equatable {
+        let baseURL: URL
+        let token: String?
     }
 
     @State private var connectionMode: ConnectionMode = .folder
@@ -43,6 +49,10 @@ struct LibraryAddView: View {
     @State private var useLocalStorage = true
     @State private var apiBaseURLText = "http://localhost:41595/api/v2/"
     @State private var apiToken = ""
+    @State private var apiLibraryInfo: EagleLibraryInfo?
+    @State private var validatedAPIConnection: APIConnectionData?
+    @State private var apiMediaLibraryName: String?
+    @State private var apiMediaBookmarkData: Data?
     @State private var validationMessage: String?
 
     @State private var isLoading = false
@@ -55,63 +65,8 @@ struct LibraryAddView: View {
     var body: some View {
         NavigationStack(path: $path) {
             Form {
-                Section("Source") {
-                    Picker("Connection", selection: $connectionMode) {
-                        ForEach(ConnectionMode.allCases) { mode in
-                            Text(mode.title).tag(mode)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                }
-
-                switch connectionMode {
-                case .folder:
-                    Section("Library") {
-                        NavigationLink(value: Destination.folderSelect) {
-                            LabeledContent("Eagle Library Folder") {
-                                Text(libraryName ?? "")
-                            }
-                        }
-                    }
-
-                    Section(
-                        header: Text("Options"),
-                        footer: Text("Recommended for slow external storage or network drives."),
-                        content: {
-                            Toggle("Download images locally", isOn: $useLocalStorage)
-                        }
-                    )
-                case .eagleAPI:
-                    Section(
-                        header: Text("Connection"),
-                        footer: Text("Use localhost in Simulator. On a device, use your Mac IP address with Eagle's API port, for example http://192.168.0.66:41595/api/v2/.")
-                    ) {
-                        TextField("Base URL", text: $apiBaseURLText)
-                            .keyboardType(.URL)
-                            .textInputAutocapitalization(.never)
-                            .autocorrectionDisabled()
-
-                        SecureField("Token", text: $apiToken)
-                            .textInputAutocapitalization(.never)
-                            .autocorrectionDisabled()
-
-                        Button {
-                            validateEagleAPIConnection()
-                        } label: {
-                            Label("Validate Connection", systemImage: "checkmark.shield")
-                        }
-                        .disabled(apiFormData == nil || isLoading)
-                    }
-
-                    if let validationMessage {
-                        Section {
-                            Text(validationMessage)
-                                .font(.footnote)
-                                .foregroundStyle(.secondary)
-                                .textSelection(.enabled)
-                        }
-                    }
-                }
+                sourceSection
+                setupSections
             }
             .navigationDestination(for: Destination.self) { destination in
                 switch destination {
@@ -120,6 +75,12 @@ struct LibraryAddView: View {
                         self.libraryName = name
                         self.libraryBookmarkData = bookmarkData
                         // Pop back to root
+                        path = NavigationPath()
+                    }
+                case .apiMediaFolderSelect:
+                    LibraryFolderSelectView { name, bookmarkData in
+                        apiMediaLibraryName = name
+                        apiMediaBookmarkData = bookmarkData
                         path = NavigationPath()
                     }
                 }
@@ -143,7 +104,7 @@ struct LibraryAddView: View {
                                 } catch {
                                     Logger.app.error("Failed to create library: \(error)")
                                     await MainActor.run {
-                                        validationMessage = validationFailureMessage(for: error, data: data)
+                                        validationMessage = creationFailureMessage(for: error, data: data)
                                     }
                                 }
                                 await MainActor.run {
@@ -155,7 +116,73 @@ struct LibraryAddView: View {
                     .disabled(validFormData == nil || isLoading)
                 }
             }
+            .onChange(of: apiBaseURLText) {
+                resetAPISetupAfterInputChange()
+            }
+            .onChange(of: apiToken) {
+                resetAPISetupAfterInputChange()
+            }
+            .onChange(of: connectionMode) {
+                validationMessage = nil
+            }
         }
+    }
+
+    private var sourceSection: some View {
+        Section("Source") {
+            Picker("Connection", selection: $connectionMode) {
+                ForEach(ConnectionMode.allCases) { mode in
+                    Text(mode.title).tag(mode)
+                }
+            }
+            .pickerStyle(.segmented)
+        }
+    }
+
+    @ViewBuilder
+    private var setupSections: some View {
+        switch connectionMode {
+        case .folder:
+            folderSetupSections
+        case .eagleAPI:
+            apiSetupSections
+        }
+    }
+
+    @ViewBuilder
+    private var folderSetupSections: some View {
+        Section("Library") {
+            NavigationLink(value: Destination.folderSelect) {
+                LabeledContent("Eagle Library Folder") {
+                    Text(libraryName ?? "")
+                }
+            }
+        }
+
+        Section(
+            header: Text("Options"),
+            footer: Text("Recommended for slow external storage or network drives.")
+        ) {
+            Toggle("Download images locally", isOn: $useLocalStorage)
+        }
+    }
+
+    private var apiSetupSections: some View {
+        EagleAPISetupGuideView(
+            baseURLText: $apiBaseURLText,
+            token: $apiToken,
+            libraryInfo: currentValidatedLibraryInfo,
+            mediaLibraryName: apiMediaLibraryName,
+            validationMessage: validationMessage,
+            canValidate: apiConnectionData != nil && !isLoading,
+            canSelectMedia: apiConnectionIsValidated && !isLoading,
+            canCreate: apiFormData != nil,
+            isLoading: isLoading,
+            validateConnection: validateEagleAPIConnection,
+            selectMediaFolder: {
+                path.append(Destination.apiMediaFolderSelect)
+            }
+        )
     }
 
     private var validFormData: FormData? {
@@ -175,7 +202,7 @@ struct LibraryAddView: View {
         return .folder(name: libraryName, bookmarkData: libraryBookmarkData, useLocalStorage: useLocalStorage)
     }
 
-    private var apiFormData: FormData? {
+    private var apiConnectionData: APIConnectionData? {
         let normalizedBaseURLText = apiBaseURLText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let baseURL = EagleAPIConfiguration.url(fromUserInput: normalizedBaseURLText),
               baseURL.scheme != nil,
@@ -185,11 +212,42 @@ struct LibraryAddView: View {
 
         let normalizedToken = apiToken.trimmingCharacters(in: .whitespacesAndNewlines)
         let configuration = EagleAPIConfiguration(baseURL: baseURL, token: normalizedToken)
-        return .eagleAPI(baseURL: configuration.normalizedBaseURL, token: normalizedToken.isEmpty ? nil : normalizedToken)
+        return APIConnectionData(
+            baseURL: configuration.normalizedBaseURL,
+            token: normalizedToken.isEmpty ? nil : normalizedToken
+        )
+    }
+
+    private var apiConnectionIsValidated: Bool {
+        guard let apiConnectionData else {
+            return false
+        }
+
+        return apiConnectionData == validatedAPIConnection && apiLibraryInfo != nil
+    }
+
+    private var currentValidatedLibraryInfo: EagleLibraryInfo? {
+        apiConnectionIsValidated ? apiLibraryInfo : nil
+    }
+
+    private var apiFormData: FormData? {
+        guard let connection = apiConnectionData,
+              apiConnectionIsValidated,
+              let libraryInfo = apiLibraryInfo,
+              let apiMediaBookmarkData
+        else {
+            return nil
+        }
+
+        return .eagleAPI(
+            connection: connection,
+            libraryInfo: libraryInfo,
+            mediaBookmarkData: apiMediaBookmarkData
+        )
     }
 
     private func validateEagleAPIConnection() {
-        guard let data = apiFormData else {
+        guard let data = apiConnectionData else {
             return
         }
 
@@ -201,11 +259,14 @@ struct LibraryAddView: View {
                 let libraryInfo = try await validateEagleAPI(data)
                 let displayName = libraryInfo.name ?? String(localized: "Eagle Library")
                 await MainActor.run {
+                    apiLibraryInfo = libraryInfo
+                    validatedAPIConnection = data
                     validationMessage = String(localized: "Connected to \(displayName).")
                 }
             } catch {
                 Logger.app.error("Failed to validate Eagle API connection: \(error)")
                 await MainActor.run {
+                    clearAPIValidation()
                     validationMessage = validationFailureMessage(for: error, data: data)
                 }
             }
@@ -226,13 +287,16 @@ struct LibraryAddView: View {
                 bookmarkData: bookmarkData,
                 useLocalStorage: useLocalStorage
             )
-        case .eagleAPI(let baseURL, let token):
-            let libraryInfo = try await validateEagleAPI(data)
-            newLibrary = try await repositories.library.createEagleAPI(
+        case .eagleAPI(let connection, let libraryInfo, let mediaBookmarkData):
+            let apiLibrary = try await repositories.library.createEagleAPI(
                 name: libraryInfo.name ?? String(localized: "Eagle Library"),
-                baseURL: baseURL,
-                token: token,
+                baseURL: connection.baseURL,
+                token: connection.token,
                 libraryPath: libraryInfo.path
+            )
+            newLibrary = try await repositories.library.updateEagleAPIMediaFolder(
+                id: apiLibrary.id,
+                bookmarkData: mediaBookmarkData
             )
         }
 
@@ -243,20 +307,16 @@ struct LibraryAddView: View {
         }
     }
 
-    private func validateEagleAPI(_ data: FormData) async throws -> EagleLibraryInfo {
-        guard case .eagleAPI(let baseURL, let token) = data else {
-            throw EagleAPIError.invalidURL("")
-        }
-
+    private func validateEagleAPI(_ data: APIConnectionData) async throws -> EagleLibraryInfo {
         let client = EagleAPIClient(
-            configuration: EagleAPIConfiguration(baseURL: baseURL, token: token, timeoutInterval: 3),
+            configuration: EagleAPIConfiguration(baseURL: data.baseURL, token: data.token, timeoutInterval: 3),
             retryPolicy: .none
         )
         _ = try await client.appInfo()
         return try await client.libraryInfo()
     }
 
-    private func validationFailureMessage(for error: Error, data: FormData) -> String {
+    private func validationFailureMessage(for error: Error, data: APIConnectionData) -> String {
         if case EagleAPIError.apiStatus(let message) = error {
             return message
         }
@@ -265,11 +325,7 @@ struct LibraryAddView: View {
             return String(localized: "Local Network permission is blocked. On iPhone, open Settings > Apps > Eagle Viewer > Local Network, enable it, then try again.")
         }
 
-        guard case .eagleAPI(let baseURL, _) = data else {
-            return error.localizedDescription
-        }
-
-        let displayURL = EagleAPIConfiguration(baseURL: baseURL).normalizedBaseURL.absoluteString
+        let displayURL = EagleAPIConfiguration(baseURL: data.baseURL).normalizedBaseURL.absoluteString
         guard let urlError = error as? URLError else {
             return String(localized: "Could not validate Eagle Desktop at \(displayURL). \(error.localizedDescription)")
         }
@@ -284,8 +340,29 @@ struct LibraryAddView: View {
         }
     }
 
+    private func creationFailureMessage(for error: Error, data: FormData) -> String {
+        switch data {
+        case .folder:
+            return error.localizedDescription
+        case .eagleAPI(let connection, _, _):
+            return validationFailureMessage(for: error, data: connection)
+        }
+    }
+
     private func isLocalNetworkPermissionDenied(_ error: Error) -> Bool {
         let errorDetails = String(describing: (error as NSError).userInfo)
         return errorDetails.localizedCaseInsensitiveContains("Local network prohibited")
+    }
+
+    private func clearAPIValidation() {
+        apiLibraryInfo = nil
+        validatedAPIConnection = nil
+        apiMediaLibraryName = nil
+        apiMediaBookmarkData = nil
+    }
+
+    private func resetAPISetupAfterInputChange() {
+        clearAPIValidation()
+        validationMessage = nil
     }
 }
