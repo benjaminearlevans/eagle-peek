@@ -68,6 +68,24 @@ final class EagleAPIMediaCacheTests: XCTestCase {
         XCTAssertTrue(result?.latestIssueMessage?.contains("cannot read") == true)
     }
 
+    func test_unavailableResult_withBookmarkAccessFailure_shouldUseRecoveryMessage() throws {
+        // Arrange
+        let destinationLibraryURL = try makeTemporaryDirectory()
+        let recoveryMessage = "Re-select the Eagle library folder in Settings."
+        let cache = EagleAPIMediaCache(
+            sourceLibraryURL: nil,
+            destinationLibraryURL: destinationLibraryURL,
+            sourceUnavailableMessage: recoveryMessage
+        )
+
+        // Act
+        let result = cache.unavailableResult()
+
+        // Assert
+        XCTAssertEqual(result?.failureCount, 1)
+        XCTAssertEqual(result?.latestIssueMessage, recoveryMessage)
+    }
+
     private func makeTemporaryDirectory() throws -> URL {
         let directory = FileManager.default.temporaryDirectory
             .appending(path: "EagleAPIMediaCacheTests-\(UUID().uuidString)", directoryHint: .isDirectory)

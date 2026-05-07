@@ -16,26 +16,35 @@ enum EagleAPIMediaCacheSetup {
 struct EagleAPIMediaCache {
     private let sourceLibraryURL: URL?
     private let destinationLibraryURL: URL
+    private let sourceUnavailableMessage: String?
     private let fileManager: FileManager
 
     init(
         sourceLibraryURL: URL?,
         destinationLibraryURL: URL,
+        sourceUnavailableMessage: String? = nil,
         fileManager: FileManager = .default
     ) {
         self.sourceLibraryURL = sourceLibraryURL
         self.destinationLibraryURL = destinationLibraryURL
+        self.sourceUnavailableMessage = sourceUnavailableMessage
         self.fileManager = fileManager
     }
 
     func unavailableResult() -> LibrarySyncResult? {
         guard let sourceLibraryURL else {
-            return unavailableResult(message: String(localized: "Metadata synced, but previews could not be cached because Eagle did not report a library folder path."))
+            return unavailableResult(
+                message: sourceUnavailableMessage
+                    ?? String(localized: "Metadata synced, but previews could not be cached because Eagle did not report a library folder path.")
+            )
         }
 
         let imagesURL = sourceLibraryURL.appending(path: "images", directoryHint: .isDirectory)
         guard fileManager.fileExists(atPath: imagesURL.path) else {
-            return unavailableResult(message: String(localized: "Metadata synced, but previews could not be cached because this device cannot read the Eagle library files. The Eagle Web API exposes metadata and edits, but not image bytes."))
+            return unavailableResult(
+                message: sourceUnavailableMessage
+                    ?? String(localized: "Metadata synced, but previews could not be cached because this device cannot read the Eagle library files. The Eagle Web API exposes metadata and edits, but not image bytes.")
+            )
         }
 
         return nil

@@ -72,6 +72,10 @@ extension Library {
         sourceKind == .eagleAPI
     }
 
+    var hasEagleAPIMediaFolder: Bool {
+        isEagleAPISource && !bookmarkData.isEmpty
+    }
+
     var eagleAPIConfiguration: EagleAPIConfiguration? {
         guard sourceKind == .eagleAPI,
               let apiBaseURL,

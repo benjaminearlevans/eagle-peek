@@ -8,6 +8,20 @@
 import Foundation
 import GRDB
 
+enum LibraryRepositoryError: LocalizedError {
+    case libraryNotFound
+    case unsupportedSource
+
+    var errorDescription: String? {
+        switch self {
+        case .libraryNotFound:
+            return String(localized: "Library not found.")
+        case .unsupportedSource:
+            return String(localized: "This library source does not support an API media folder.")
+        }
+    }
+}
+
 struct LibraryRepository {
     private let dbWriter: any DatabaseWriter
 
@@ -50,6 +64,27 @@ struct LibraryRepository {
             apiToken: token,
             apiLibraryPath: libraryPath
         )
+    }
+
+    func updateEagleAPIMediaFolder(id: Int64, bookmarkData: Data) async throws -> Library {
+        try await dbWriter.write { db in
+            guard var library = try Library.fetchOne(db, id: id) else {
+                throw LibraryRepositoryError.libraryNotFound
+            }
+
+            guard library.isEagleAPISource else {
+                throw LibraryRepositoryError.unsupportedSource
+            }
+
+            library.bookmarkData = bookmarkData
+            library.lastImportedFolderMTime = 0
+            library.lastImportedItemMTime = 0
+            library.lastImportStatus = .none
+            library.lastImportError = nil
+            library.lastImportFailureCount = 0
+            try library.update(db)
+            return library
+        }
     }
 
     func delete(id: Int64) async throws {
