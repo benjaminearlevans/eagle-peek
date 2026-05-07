@@ -1,0 +1,21 @@
+{
+    "id": "6ae6c694-49b1-45eb-896b-7b714b659df6",
+    "version": "1.0.0",
+    "platform": "all",
+    "arch": "all",
+    "name": "Eagle Peek",
+    "logo": "/logo.png",
+    "keywords": [
+        "iOS",
+        "bridge",
+        "sync",
+        "pairing"
+    ],
+    "devTools": false,
+    "main": {
+        "serviceMode": true,
+        "url": "index.html",
+        "width": 640,
+        "height": 480
+    }
+}
