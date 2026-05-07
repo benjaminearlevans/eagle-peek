@@ -5,7 +5,7 @@
 //  Created on 2025/08/25
 //
 
-enum GlobalSortType: String, CaseIterable {
+enum GlobalSortType: String, CaseIterable, Codable, Hashable {
     case dateAdded = "dateAdded"
     case title = "title"
     case rating = "rating"
@@ -22,14 +22,14 @@ enum GlobalSortType: String, CaseIterable {
     }
 }
 
-struct GlobalSortOption: Equatable {
+struct GlobalSortOption: Codable, Equatable, Hashable {
     let type: GlobalSortType
     let ascending: Bool
 
     static let defaultValue: GlobalSortOption = .init(type: .dateAdded, ascending: true)
 }
 
-enum FolderItemSortType: String, CaseIterable {
+enum FolderItemSortType: String, CaseIterable, Codable, Hashable {
     case global = "global"
     case manual = "manual"
     case dateAdded = "dateAdded"
@@ -52,14 +52,14 @@ enum FolderItemSortType: String, CaseIterable {
     }
 }
 
-struct FolderItemSortOption: Equatable {
+struct FolderItemSortOption: Codable, Equatable, Hashable {
     let type: FolderItemSortType
     let ascending: Bool
 
     static let defaultValue: FolderItemSortOption = .init(type: .global, ascending: true)
 }
 
-enum FolderSortType: String, CaseIterable {
+enum FolderSortType: String, CaseIterable, Codable, Hashable {
     case manual = "manual"
     case dateAdded = "dateAdded"
     case title = "title"
@@ -76,7 +76,7 @@ enum FolderSortType: String, CaseIterable {
     }
 }
 
-struct FolderSortOption: Equatable {
+struct FolderSortOption: Codable, Equatable, Hashable {
     let type: FolderSortType
     let ascending: Bool
 
