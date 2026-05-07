@@ -49,8 +49,20 @@ struct RefreshButton: View {
                     startImporting(fullImport: true)
                 }
             } label: {
-                Image(systemName: "arrow.trianglehead.clockwise")
-                    .foregroundColor(Color.primary)
+                ZStack(alignment: .topTrailing) {
+                    Image(systemName: "arrow.trianglehead.clockwise")
+                        .foregroundColor(Color.primary)
+
+                    if shouldShowAttentionBadge {
+                        Image(systemName: "exclamationmark.circle.fill")
+                            .font(.caption2)
+                            .foregroundStyle(attentionColor)
+                            .background(Color(.systemBackground), in: Circle())
+                            .offset(x: 6, y: -6)
+                            .accessibilityHidden(true)
+                    }
+                }
+                .accessibilityLabel(refreshAccessibilityLabel)
             }
             // iOS 26 bug
 //            primaryAction: {
@@ -60,15 +72,48 @@ struct RefreshButton: View {
     }
 
     private func startImporting(fullImport: Bool) {
-        _ = Task {
+        Task {
             // establish folder access if not yet
-            _ = try await libraryFolderManager.getActiveLibraryURL()
+            _ = try? await libraryFolderManager.getActiveLibraryURL()
             await metadataImportManager.startImporting(
                 library: library,
                 activeLibraryURL: libraryFolderManager.activeLibraryURL,
                 dbWriter: repositories.dbWriter,
                 fullImport: fullImport
             )
+        }
+    }
+
+    private var shouldShowAttentionBadge: Bool {
+        switch library.lastImportStatus {
+        case .partial, .failed, .cancelled:
+            return true
+        case .none, .success:
+            return false
+        }
+    }
+
+    private var attentionColor: Color {
+        switch library.lastImportStatus {
+        case .failed:
+            return .red
+        case .partial, .cancelled:
+            return .orange
+        case .none, .success:
+            return .secondary
+        }
+    }
+
+    private var refreshAccessibilityLabel: String {
+        switch library.lastImportStatus {
+        case .partial:
+            return String(localized: "Sync menu, last sync completed with issues")
+        case .failed:
+            return String(localized: "Sync menu, last sync failed")
+        case .cancelled:
+            return String(localized: "Sync menu, last sync stopped")
+        case .none, .success:
+            return String(localized: "Sync menu")
         }
     }
 }

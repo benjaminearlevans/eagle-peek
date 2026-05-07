@@ -13,9 +13,11 @@ import SwiftUI
 class MetadataImportManager: ObservableObject {
     @Published var isImporting = false
     @Published var importProgress: Double = 0.0
+    @Published var lastImportSummary: MetadataImporter.ImportRunSummary?
     
     private let metadataImporter = MetadataImporter()
-    private var currentImportTask: Task<Void, Error>?
+    private var currentImportTask: Task<Void, Never>?
+    private var currentImportRunID: UUID?
     
     func startImporting(
         library: Library,
@@ -24,37 +26,51 @@ class MetadataImportManager: ObservableObject {
         fullImport: Bool = false
     ) async {
         // Cancel any existing import task
+        let importRunID = UUID()
         await MainActor.run {
             currentImportTask?.cancel()
+            currentImportRunID = importRunID
         }
         
         // Start new import task
         let task = Task {
+            let shouldStart = await MainActor.run {
+                currentImportRunID == importRunID
+            }
+            guard shouldStart else { return }
+
             // Set importing state to true and reset progress
             await MainActor.run {
                 isImporting = true
                 importProgress = 0.0
+                lastImportSummary = nil
             }
             
             var libraryURL: URL?
             var localURL: URL?
+            var libraryAccessError: Error?
             
             // Handle security-scoped resource for Eagle library access
             if library.useLocalStorage {
-                // Get local storage URL for image copying
-                localURL = try? LocalImageStorageManager.shared.getLocalStorageURL(for: library.id)
-                
-                // Temporarily access Eagle library for import
-                var isStale = false
-                libraryURL = try URL(
-                    resolvingBookmarkData: library.bookmarkData,
-                    options: [],
-                    relativeTo: nil,
-                    bookmarkDataIsStale: &isStale
-                )
-                
-                guard let libraryURL, libraryURL.startAccessingSecurityScopedResource() else {
-                    throw LibraryFolderError.accessDenied
+                do {
+                    // Get local storage URL for image copying
+                    localURL = try LocalImageStorageManager.shared.getLocalStorageURL(for: library.id)
+
+                    // Temporarily access Eagle library for import
+                    var isStale = false
+                    libraryURL = try URL(
+                        resolvingBookmarkData: library.bookmarkData,
+                        options: [],
+                        relativeTo: nil,
+                        bookmarkDataIsStale: &isStale
+                    )
+
+                    guard let libraryURL, libraryURL.startAccessingSecurityScopedResource() else {
+                        throw LibraryFolderError.accessDenied
+                    }
+                } catch {
+                    libraryAccessError = error
+                    libraryURL = nil
                 }
             } else {
                 // Use the already-active library URL from LibraryFolderManager
@@ -67,23 +83,50 @@ class MetadataImportManager: ObservableObject {
                     libraryURL.stopAccessingSecurityScopedResource()
                 }
             }
-            
-            guard let libraryURL else {
-                return
-            }
-            
-            let importStatus: ImportStatus
-            
+
+            var importStatus: ImportStatus = .cancelled
+            var importSummary = MetadataImporter.ImportRunSummary()
+            var fatalErrorMessage: String?
+
             // Ensure importing state is reset and status is updated when task completes
             defer {
+                let finalStatus = importStatus
+                let finalSummary = importSummary
+                let finalErrorMessage = fatalErrorMessage
+
                 Task {
+                    let shouldApply = await MainActor.run {
+                        currentImportRunID == importRunID
+                    }
+                    guard shouldApply else { return }
+
                     // Update library import status first
                     do {
                         try await dbWriter.write { db in
-                            try db.execute(
-                                sql: "UPDATE library SET lastImportStatus = ? WHERE id = ?",
-                                arguments: [importStatus.rawValue, library.id]
-                            )
+                            let now = Date()
+                            let errorMessage = finalErrorMessage ?? finalSummary.shortFailureDescription
+                            var sql = """
+                            UPDATE library
+                            SET lastImportStatus = ?,
+                                lastImportFailureCount = ?,
+                                lastImportError = ?,
+                                lastImportFinishedAt = ?
+                            """
+                            var arguments: StatementArguments = [
+                                finalStatus.rawValue,
+                                finalSummary.failureCount,
+                                finalStatus == .success ? nil : errorMessage,
+                                now
+                            ]
+
+                            if finalStatus.isSuccessful {
+                                sql += ", lastSuccessfulImportAt = ?"
+                                arguments += [now]
+                            }
+
+                            sql += " WHERE id = ?"
+                            arguments += [library.id]
+                            try db.execute(sql: sql, arguments: arguments)
                         }
                     } catch {
                         Logger.app.warning("Failed to update import status: \(error)")
@@ -91,9 +134,25 @@ class MetadataImportManager: ObservableObject {
                     
                     // Then reset the importing state on main thread
                     await MainActor.run {
+                        guard currentImportRunID == importRunID else { return }
+                        lastImportSummary = finalSummary
                         isImporting = false
+                        currentImportTask = nil
+                        currentImportRunID = nil
                     }
                 }
+            }
+
+            if let libraryAccessError {
+                importStatus = .failed
+                fatalErrorMessage = libraryAccessError.localizedDescription
+                return
+            }
+
+            guard let libraryURL else {
+                importStatus = .failed
+                fatalErrorMessage = LibraryFolderError.invalidBookmark.localizedDescription
+                return
             }
             
             do {
@@ -104,14 +163,22 @@ class MetadataImportManager: ObservableObject {
                 if fullImport {
                     try await dbWriter.write { db in
                         try db.execute(
-                            sql: "UPDATE library SET lastImportedFolderMTime = 0, lastImportedItemMTime = 0 WHERE id = ?",
-                            arguments: [library.id]
+                            sql: """
+                            UPDATE library
+                            SET lastImportedFolderMTime = 0,
+                                lastImportedItemMTime = 0,
+                                lastImportStatus = ?,
+                                lastImportError = NULL,
+                                lastImportFailureCount = 0
+                            WHERE id = ?
+                            """,
+                            arguments: [ImportStatus.none.rawValue, library.id]
                         )
                     }
                 }
                 
                 // Import all metadata (folders and items) with optional local storage
-                try await metadataImporter.importAll(
+                importSummary = try await metadataImporter.importAll(
                     dbWriter: dbWriter,
                     libraryId: library.id,
                     libraryUrl: libraryURL,
@@ -123,7 +190,7 @@ class MetadataImportManager: ObservableObject {
                     }
                 )
                 
-                importStatus = .success
+                importStatus = importSummary.hasFailures ? .partial : .success
             } catch {
                 if error is CancellationError {
                     Logger.app.info("Import task was cancelled")
@@ -131,6 +198,7 @@ class MetadataImportManager: ObservableObject {
                 } else {
                     Logger.app.warning("Failed to import metadata: \(error)")
                     importStatus = .failed
+                    fatalErrorMessage = error.localizedDescription
                 }
             }
         }

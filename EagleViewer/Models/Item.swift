@@ -131,6 +131,33 @@ struct Item: Codable, Identifiable, FetchableRecord, Hashable, ItemPathProvider 
     var duration: Double
 }
 
+extension Item {
+    var isVideo: Bool {
+        duration != 0
+    }
+
+    var isAnimatedImage: Bool {
+        let lowercasedExtension = ext.lowercased()
+        return lowercasedExtension == "gif" || lowercasedExtension == "webp"
+    }
+
+    var mediaKindLabel: String {
+        if isVideo {
+            return String(localized: "Video")
+        }
+
+        if isTextFile {
+            return String(localized: "Text")
+        }
+
+        if isAnimatedImage {
+            return String(localized: "Animated")
+        }
+
+        return String(localized: "Photo")
+    }
+}
+
 extension Item: TableRecord {
     static let folderItems = hasMany(FolderItem.self, using: ForeignKey(["libraryId", "itemId"]))
 }

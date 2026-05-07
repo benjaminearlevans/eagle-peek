@@ -10,6 +10,59 @@ import GRDB
 import OSLog
 
 struct MetadataImporter {
+    struct ImportItemFailure: Codable, Hashable {
+        let itemId: String
+        let operation: String
+        let message: String
+    }
+
+    struct ImportRunSummary: Codable, Equatable {
+        var updatedItemCount = 0
+        var deletedItemCount = 0
+        var failedItems: [ImportItemFailure] = []
+
+        var failureCount: Int {
+            failedItems.count
+        }
+
+        var hasFailures: Bool {
+            !failedItems.isEmpty
+        }
+
+        var shortFailureDescription: String? {
+            guard let firstFailure = failedItems.first else {
+                return nil
+            }
+
+            if failedItems.count == 1 {
+                return "\(firstFailure.operation): \(firstFailure.message)"
+            }
+
+            return String(localized: "\(failedItems.count) items could not sync. First issue: \(firstFailure.message)")
+        }
+    }
+
+    private enum MetadataLoadResult {
+        case success(itemId: String, metadata: ItemMetadataJSON)
+        case failure(ImportItemFailure)
+    }
+
+    private enum ItemCopyResult {
+        case success(itemId: String)
+        case failure(ImportItemFailure)
+    }
+
+    private enum LocalImageCopyError: LocalizedError {
+        case insufficientDiskSpace(required: Int64, available: Int64)
+
+        var errorDescription: String? {
+            switch self {
+            case .insufficientDiskSpace(let required, let available):
+                return String(localized: "Not enough free space to copy image. Required \(required) bytes, available \(available) bytes.")
+            }
+        }
+    }
+
     /// Converts a title to Eagle's special sort format
     /// Extracts digit sequences and replaces them with left zero-padded 19-character values
     private func nameForSort(from name: String) -> String {
@@ -101,7 +154,7 @@ struct MetadataImporter {
         libraryUrl: URL,
         localUrl: URL?,
         progressHandler: @escaping (Double) async -> Void
-    ) async throws {
+    ) async throws -> ImportRunSummary {
         // Import folders first (assuming folders are 10% of the work)
         try await importFolders(
             dbWriter: dbWriter,
@@ -114,7 +167,7 @@ struct MetadataImporter {
         try Task.checkCancellation()
         
         // Import items (90% of the work)
-        try await importItems(
+        return try await importItems(
             dbWriter: dbWriter,
             libraryId: libraryId,
             libraryUrl: libraryUrl,
@@ -139,8 +192,9 @@ struct MetadataImporter {
         libraryUrl: URL,
         localUrl: URL?,
         progressHandler: @escaping (Double) async -> Void
-    ) async throws {
+    ) async throws -> ImportRunSummary {
         Logger.app.debug("Starting item import for library \(libraryId)")
+        var summary = ImportRunSummary()
         
         // Get the library's last imported item modification time and existing item IDs
         let (lastImportedItemMTime, existingItemIds) = try await dbWriter.read { db in
@@ -170,6 +224,8 @@ struct MetadataImporter {
             .filter { _, modificationTime in modificationTime > lastImportedItemMTime }
             .sorted { $0.value < $1.value }
             .map { $0.key }
+        var lastSafeImportedItemMTime = lastImportedItemMTime
+        var timestampAdvanceBlocked = false
         
         if !itemsToUpdate.isEmpty {
             Logger.app.debug("Updating \(itemsToUpdate.count) items")
@@ -181,61 +237,140 @@ struct MetadataImporter {
             let batchSize = localUrl == nil ? 100 : 10
             for batch in itemsToUpdate.chunks(ofSize: batchSize) {
                 // Load metadata for all items in batch first
-                let batchMetadata: [(itemId: String, metadata: ItemMetadataJSON)] = try await withThrowingTaskGroup(of: (String, ItemMetadataJSON).self) { group in
+                let metadataResults = try await withThrowingTaskGroup(of: MetadataLoadResult.self) { group in
                     for itemId in batch {
                         group.addTask {
-                            let metadata = try await loadItemMetadata(libraryUrl: libraryUrl, itemId: itemId)
-                            return (itemId, metadata)
+                            do {
+                                let metadata = try await loadItemMetadata(libraryUrl: libraryUrl, itemId: itemId)
+                                return .success(itemId: itemId, metadata: metadata)
+                            } catch {
+                                if error is CancellationError {
+                                    throw error
+                                }
+                                return .failure(ImportItemFailure(
+                                    itemId: itemId,
+                                    operation: String(localized: "Read metadata"),
+                                    message: error.localizedDescription
+                                ))
+                            }
                         }
                     }
                     
-                    var results: [(itemId: String, metadata: ItemMetadataJSON)] = []
-                    for try await (itemId, metadata) in group {
-                        results.append((itemId: itemId, metadata: metadata))
+                    var results: [MetadataLoadResult] = []
+                    for try await result in group {
+                        results.append(result)
                     }
                     return results
                 }
+
+                var batchMetadata: [(itemId: String, metadata: ItemMetadataJSON)] = []
+                for result in metadataResults {
+                    switch result {
+                    case .success(let itemId, let metadata):
+                        batchMetadata.append((itemId: itemId, metadata: metadata))
+                    case .failure(let failure):
+                        summary.failedItems.append(failure)
+                    }
+                }
                 
                 // Build Item instances from metadata
-                let batchItems: [(item: StoredItem, metadata: ItemMetadataJSON)] = batchMetadata.map { itemId, metadata in
+                var batchItems: [(item: StoredItem, metadata: ItemMetadataJSON)] = batchMetadata.map { itemId, metadata in
                     let item = buildItem(libraryId: libraryId, itemId: itemId, metadata: metadata)
                     return (item: item, metadata: metadata)
                 }
                 
                 // Copy images to local storage if localUrl provided
                 if let localUrl = localUrl {
-                    try await withThrowingTaskGroup(of: Void.self) { group in
+                    let copyResults = try await withThrowingTaskGroup(of: ItemCopyResult.self) { group in
                         for (item, _) in batchItems {
                             group.addTask {
-                                try await copyItemImages(
-                                    item: item,
-                                    libraryUrl: libraryUrl,
-                                    localUrl: localUrl
-                                )
+                                do {
+                                    try await copyItemImages(
+                                        item: item,
+                                        libraryUrl: libraryUrl,
+                                        localUrl: localUrl
+                                    )
+                                    return .success(itemId: item.itemId)
+                                } catch {
+                                    if error is CancellationError {
+                                        throw error
+                                    }
+                                    return .failure(ImportItemFailure(
+                                        itemId: item.itemId,
+                                        operation: String(localized: "Copy file"),
+                                        message: error.localizedDescription
+                                    ))
+                                }
                             }
                         }
                         
-                        for try await _ in group {
-                            // Wait for all copies to complete
+                        var results: [ItemCopyResult] = []
+                        for try await result in group {
+                            results.append(result)
+                        }
+                        return results
+                    }
+
+                    var failedCopyItemIds = Set<String>()
+                    for result in copyResults {
+                        switch result {
+                        case .success:
+                            break
+                        case .failure(let failure):
+                            failedCopyItemIds.insert(failure.itemId)
+                            summary.failedItems.append(failure)
                         }
                     }
+                    batchItems.removeAll { failedCopyItemIds.contains($0.item.itemId) }
                 }
                 
                 try Task.checkCancellation()
                 
-                try await dbWriter.write { db in
-                    for (item, metadata) in batchItems {
-                        try processItem(db: db, item: item, metadata: metadata, existingItemIds: existingItemIds)
+                let itemsForWrite = batchItems
+                let (batchSuccessfulItemIds, dbFailures) = try await dbWriter.write { db -> (Set<String>, [ImportItemFailure]) in
+                    var successfulItemIds = Set<String>()
+                    var failures: [ImportItemFailure] = []
+
+                    for (item, metadata) in itemsForWrite {
+                        do {
+                            try processItem(db: db, item: item, metadata: metadata, existingItemIds: existingItemIds)
+                            successfulItemIds.insert(item.itemId)
+                        } catch {
+                            failures.append(ImportItemFailure(
+                                itemId: item.itemId,
+                                operation: String(localized: "Save metadata"),
+                                message: error.localizedDescription
+                            ))
+                        }
                     }
-                    
-                    // Update timestamp after each batch for efficient retry
-                    // Find max timestamp in this batch excluding Int64.max
-                    let batchTimestamps = batch.compactMap { itemId in
-                        let timestamp = allItemTimes[itemId]
-                        return (timestamp != Int64.max) ? timestamp : nil
+
+                    return (successfulItemIds, failures)
+                }
+                summary.failedItems.append(contentsOf: dbFailures)
+                summary.updatedItemCount += batchSuccessfulItemIds.count
+
+                if !timestampAdvanceBlocked {
+                    for itemId in batch {
+                        guard let timestamp = allItemTimes[itemId], timestamp != Int64.max else {
+                            continue
+                        }
+
+                        if batchSuccessfulItemIds.contains(itemId) {
+                            lastSafeImportedItemMTime = max(lastSafeImportedItemMTime, timestamp)
+                        } else {
+                            timestampAdvanceBlocked = true
+                            break
+                        }
                     }
-                    if let maxBatchTimestamp = batchTimestamps.max() {
-                        try db.execute(sql: "UPDATE library SET lastImportedItemMTime = ? WHERE id = ?", arguments: [maxBatchTimestamp, libraryId])
+                }
+
+                if lastSafeImportedItemMTime > lastImportedItemMTime {
+                    let importedItemMTime = lastSafeImportedItemMTime
+                    try await dbWriter.write { db in
+                        try db.execute(
+                            sql: "UPDATE library SET lastImportedItemMTime = ? WHERE id = ?",
+                            arguments: [importedItemMTime, libraryId]
+                        )
                     }
                 }
                 
@@ -266,6 +401,7 @@ struct MetadataImporter {
         }
         
         // Final transaction for cleanup and timestamp update
+        let finalImportedItemMTime = timestampAdvanceBlocked ? lastSafeImportedItemMTime : (allItemTimes.values.filter { $0 != Int64.max }.max() ?? 0)
         try await dbWriter.write { db in
             if shouldCheckDeletion {
                 // Create temporary table for current item IDs
@@ -279,19 +415,22 @@ struct MetadataImporter {
                 }
                 
                 // Delete removed items and their related records
-                try db.execute(sql: "DELETE FROM folderItem WHERE libraryId = ? AND itemId NOT IN (SELECT itemId FROM temp_current_items)", arguments: [libraryId])
+                try db.execute(
+                    sql: "DELETE FROM folderItem WHERE libraryId = ? AND itemId NOT IN (SELECT itemId FROM temp_current_items)",
+                    arguments: [libraryId]
+                )
                 try db.execute(sql: "DELETE FROM item WHERE libraryId = ? AND itemId NOT IN (SELECT itemId FROM temp_current_items)", arguments: [libraryId])
             }
             
             // Update library timestamp (exclude Int64.max values from items not in mtime.json)
-            let maxTimestamp = allItemTimes.values.filter { $0 != Int64.max }.max() ?? 0
-            try db.execute(sql: "UPDATE library SET lastImportedItemMTime = ? WHERE id = ?", arguments: [maxTimestamp, libraryId])
+            try db.execute(sql: "UPDATE library SET lastImportedItemMTime = ? WHERE id = ?", arguments: [finalImportedItemMTime, libraryId])
         }
         
         // Report completion after deletion check
         await progressHandler(1.0)
         
         Logger.app.debug("Item import completed")
+        return summary
     }
     
     /// Get all item times from mtime.json and discover missing items if needed
@@ -436,19 +575,8 @@ struct MetadataImporter {
         // Copy main image file
         let sourceImagePath = libraryUrl.appending(path: item.imagePath, directoryHint: .notDirectory)
         let destImagePath = localUrl.appending(path: item.imagePath, directoryHint: .notDirectory)
-        
-        // Create parent directory
-        let destParent = destImagePath.deletingLastPathComponent()
-        try FileManager.default.createDirectory(at: destParent, withIntermediateDirectories: true)
-        
-        // Remove existing file if it exists (to handle broken/changed files)
-        if FileManager.default.fileExists(atPath: destImagePath.path) {
-            try FileManager.default.removeItem(at: destImagePath)
-        }
-        
-        // Copy image file
-        try await CloudFile.ensureMaterialized(at: sourceImagePath)
-        try FileManager.default.copyItem(at: sourceImagePath, to: destImagePath)
+
+        try await atomicallyCopyMaterializedFile(from: sourceImagePath, to: destImagePath)
         Logger.app.debug("Copied image: \(item.imagePath)")
         
         // Copy thumbnail if it exists and is different from main image
@@ -456,16 +584,55 @@ struct MetadataImporter {
             let sourceThumbnailPath = libraryUrl.appending(path: item.thumbnailPath, directoryHint: .notDirectory)
             if await CloudFile.fileExists(at: sourceThumbnailPath) {
                 let destThumbnailPath = localUrl.appending(path: item.thumbnailPath, directoryHint: .notDirectory)
-                
-                // Remove existing thumbnail if it exists
-                if FileManager.default.fileExists(atPath: destThumbnailPath.path) {
-                    try FileManager.default.removeItem(at: destThumbnailPath)
-                }
-                
-                try await CloudFile.ensureMaterialized(at: sourceThumbnailPath)
-                try FileManager.default.copyItem(at: sourceThumbnailPath, to: destThumbnailPath)
+                try await atomicallyCopyMaterializedFile(from: sourceThumbnailPath, to: destThumbnailPath)
                 Logger.app.debug("Copied thumbnail: \(item.thumbnailPath)")
             }
+        }
+    }
+
+    private func atomicallyCopyMaterializedFile(from sourceURL: URL, to destinationURL: URL) async throws {
+        let fileManager = FileManager.default
+        let destinationParent = destinationURL.deletingLastPathComponent()
+        try fileManager.createDirectory(at: destinationParent, withIntermediateDirectories: true)
+
+        try await CloudFile.ensureMaterialized(at: sourceURL)
+        try ensureAvailableSpaceForCopy(from: sourceURL, toDirectory: destinationParent)
+
+        let temporaryURL = destinationParent.appending(
+            path: ".\(destinationURL.lastPathComponent).\(UUID().uuidString).tmp",
+            directoryHint: .notDirectory
+        )
+        defer {
+            if fileManager.fileExists(atPath: temporaryURL.path) {
+                try? fileManager.removeItem(at: temporaryURL)
+            }
+        }
+
+        try fileManager.copyItem(at: sourceURL, to: temporaryURL)
+        if fileManager.fileExists(atPath: destinationURL.path) {
+            _ = try fileManager.replaceItemAt(
+                destinationURL,
+                withItemAt: temporaryURL,
+                backupItemName: nil,
+                options: [.usingNewMetadataOnly]
+            )
+        } else {
+            try fileManager.moveItem(at: temporaryURL, to: destinationURL)
+        }
+    }
+
+    private func ensureAvailableSpaceForCopy(from sourceURL: URL, toDirectory destinationDirectory: URL) throws {
+        let sourceSize = Int64((try sourceURL.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0)
+        guard sourceSize > 0 else {
+            return
+        }
+
+        let availableCapacity = try destinationDirectory
+            .resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey])
+            .volumeAvailableCapacityForImportantUsage ?? Int64.max
+        let requiredCapacity = sourceSize + min(sourceSize, 50 * 1024 * 1024)
+        guard availableCapacity >= requiredCapacity else {
+            throw LocalImageCopyError.insufficientDiskSpace(required: requiredCapacity, available: availableCapacity)
         }
     }
     

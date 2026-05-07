@@ -18,6 +18,7 @@ struct HomeView: View {
     @EnvironmentObject private var navigationManager: NavigationManager
     @EnvironmentObject private var settingsManager: SettingsManager
     @EnvironmentObject private var searchManager: SearchManager
+    @EnvironmentObject private var metadataImportManager: MetadataImportManager
     @EnvironmentObject private var eventCenter: EventCenter
     @Environment(\.repositories) private var repositories
 
@@ -28,6 +29,17 @@ struct HomeView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 16) {
+                if shouldShowSyncStatusBanner {
+                    Button {
+                        showingSettings = true
+                    } label: {
+                        SyncStatusBanner(library: library)
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.horizontal, 20)
+                    .padding(.top, 8)
+                }
+
                 if isSearchEmpty {
                     CollectionLinksView()
                 }
@@ -94,6 +106,19 @@ struct HomeView: View {
                 $folders.searchText.wrappedValue = ""
                 searchManager.clearSearch()
             }
+        }
+    }
+
+    private var shouldShowSyncStatusBanner: Bool {
+        guard !metadataImportManager.isImporting else {
+            return false
+        }
+
+        switch library.lastImportStatus {
+        case .partial, .failed, .cancelled:
+            return true
+        case .none, .success:
+            return false
         }
     }
 

@@ -231,6 +231,10 @@ struct SearchSuggestInnerView: View {
             return AttributedString(str)
         }
 
+        guard !searched.isEmpty else {
+            return normalString(str[...])
+        }
+
         var remainingString = str[...]
         var result = AttributedString()
 
