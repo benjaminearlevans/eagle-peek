@@ -102,6 +102,21 @@ struct EagleAPILibrarySource: LibrarySource {
             return .failed(String(localized: "Metadata synced, but API previews could not be cached because local media storage could not be opened."))
         }
 
+        if library.isEagleBridgeSource {
+            guard let mediaBaseURL = library.eagleBridgeMediaBaseURL,
+                  let deviceToken = library.apiToken,
+                  !deviceToken.isEmpty
+            else {
+                return .failed(String(localized: "Metadata synced, but bridge media details are incomplete. Pair this library again."))
+            }
+
+            return .bridge(EagleBridgeMediaCache(
+                mediaBaseURL: mediaBaseURL,
+                deviceToken: deviceToken,
+                destinationLibraryURL: destinationURL
+            ))
+        }
+
         return .available(EagleAPIMediaCache(
             sourceLibraryURL: mediaSourceURL ?? library.eagleAPILibraryURL,
             destinationLibraryURL: destinationURL,
@@ -209,6 +224,9 @@ struct EagleAPILibrarySource: LibrarySource {
                         let cacheResult = await mediaCache.cachePreviews(for: previewableItems)
                         mediaResult.append(cacheResult)
                     }
+                case .bridge(let mediaCache):
+                    let cacheResult = await mediaCache.cachePreviews(for: previewableItems)
+                    mediaResult.append(cacheResult)
                 case .failed(let message):
                     if mediaAvailabilityIssue == nil {
                         mediaAvailabilityIssue = LibrarySyncResult(

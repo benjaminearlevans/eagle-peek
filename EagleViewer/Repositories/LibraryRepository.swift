@@ -66,6 +66,18 @@ struct LibraryRepository {
         )
     }
 
+    func createEagleBridge(name: String, apiBaseURL: URL, deviceToken: String, libraryPath: String?) async throws -> Library {
+        try await create(
+            name: name,
+            bookmarkData: Data(),
+            useLocalStorage: false,
+            sourceKind: .eagleBridge,
+            apiBaseURL: apiBaseURL.absoluteString,
+            apiToken: deviceToken,
+            apiLibraryPath: libraryPath
+        )
+    }
+
     func updateEagleAPIMediaFolder(id: Int64, bookmarkData: Data) async throws -> Library {
         try await dbWriter.write { db in
             guard var library = try Library.fetchOne(db, id: id) else {

@@ -117,6 +117,10 @@ struct SyncIssuesView: View {
     }
 
     private var recoveryTip: String {
+        if library.isEagleBridgeSource {
+            return String(localized: "For Bridge libraries, keep Eagle Desktop and the Eagle Peek Bridge plugin running, then retry sync or queued edits.")
+        }
+
         if library.isEagleAPISource {
             return String(localized: "For API libraries, keep Eagle Desktop running and retry queued edits after the connection is restored.")
         }

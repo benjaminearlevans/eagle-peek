@@ -63,6 +63,24 @@ final class EagleAPIClientTests: XCTestCase {
         XCTAssertEqual(request.value(forHTTPHeaderField: "Accept"), "application/json")
     }
 
+    func test_urlRequest_withBearerToken_shouldSetAuthorizationHeaderWithoutQueryToken() throws {
+        // Arrange
+        let configuration = EagleAPIConfiguration(
+            baseURL: URL(string: "http://192.168.1.20:41695/api/v2")!,
+            token: "bridge-token",
+            authentication: .bearerToken
+        )
+        let client = EagleAPIClient(configuration: configuration, transport: MockEagleAPITransport())
+
+        // Act
+        let request = try client.urlRequest(path: "library/info", method: "GET")
+
+        // Assert
+        XCTAssertEqual(request.url?.absoluteString, "http://192.168.1.20:41695/api/v2/library/info")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer bridge-token")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "Accept"), "application/json")
+    }
+
     func test_appInfo_withSuccessResponse_shouldDecodePayload() async throws {
         // Arrange
         let data = Data("""

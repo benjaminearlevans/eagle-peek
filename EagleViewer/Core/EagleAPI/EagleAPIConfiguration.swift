@@ -7,6 +7,12 @@
 
 import Foundation
 
+enum EagleAPIAuthentication: Equatable, Hashable {
+    case none
+    case queryToken
+    case bearerToken
+}
+
 struct EagleAPIConfiguration: Equatable, Hashable {
     static let defaultPort = 41595
     static let defaultAPIPath = "/api/v2/"
@@ -14,11 +20,18 @@ struct EagleAPIConfiguration: Equatable, Hashable {
     var baseURL: URL
     var token: String?
     var timeoutInterval: TimeInterval
+    var authentication: EagleAPIAuthentication
 
-    init(baseURL: URL, token: String? = nil, timeoutInterval: TimeInterval = 10) {
+    init(
+        baseURL: URL,
+        token: String? = nil,
+        timeoutInterval: TimeInterval = 10,
+        authentication: EagleAPIAuthentication = .queryToken
+    ) {
         self.baseURL = baseURL
         self.token = token?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
         self.timeoutInterval = timeoutInterval
+        self.authentication = authentication
     }
 
     static func localhost(token: String? = nil) -> EagleAPIConfiguration {

@@ -69,22 +69,30 @@ struct Library: Codable, Identifiable, Equatable, FetchableRecord, MutablePersis
 
 extension Library {
     var isEagleAPISource: Bool {
-        sourceKind == .eagleAPI
+        sourceKind == .eagleAPI || sourceKind == .eagleBridge
+    }
+
+    var isEagleBridgeSource: Bool {
+        sourceKind == .eagleBridge
     }
 
     var hasEagleAPIMediaFolder: Bool {
-        isEagleAPISource && !bookmarkData.isEmpty
+        sourceKind == .eagleAPI && !bookmarkData.isEmpty
     }
 
     var eagleAPIConfiguration: EagleAPIConfiguration? {
-        guard sourceKind == .eagleAPI,
+        guard isEagleAPISource,
               let apiBaseURL,
               let baseURL = URL(string: apiBaseURL)
         else {
             return nil
         }
 
-        return EagleAPIConfiguration(baseURL: baseURL, token: apiToken)
+        return EagleAPIConfiguration(
+            baseURL: baseURL,
+            token: apiToken,
+            authentication: sourceKind == .eagleBridge ? .bearerToken : .queryToken
+        )
     }
 
     var eagleAPILibraryURL: URL? {
@@ -93,5 +101,22 @@ extension Library {
         }
 
         return URL(fileURLWithPath: apiLibraryPath, isDirectory: true)
+    }
+
+    var eagleBridgeMediaBaseURL: URL? {
+        guard sourceKind == .eagleBridge,
+              let apiBaseURL,
+              let baseURL = URL(string: apiBaseURL)
+        else {
+            return nil
+        }
+
+        let apiRoot = EagleAPIConfiguration(baseURL: baseURL).normalizedBaseURL
+        let baseString = apiRoot.absoluteString
+        if baseString.hasSuffix("/api/v2/") {
+            return URL(string: String(baseString.dropLast("/api/v2/".count)) + "/media/v1/")
+        }
+
+        return URL(string: baseString)?.deletingLastPathComponent().deletingLastPathComponent().appending(path: "media/v1/", directoryHint: .isDirectory)
     }
 }

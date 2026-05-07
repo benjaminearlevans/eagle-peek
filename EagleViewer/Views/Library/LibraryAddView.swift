@@ -13,9 +13,11 @@ struct LibraryAddView: View {
     enum Destination: Hashable {
         case folderSelect
         case apiMediaFolderSelect
+        case bridgeQRCodeScanner
     }
 
     private enum ConnectionMode: String, CaseIterable, Identifiable {
+        case bridge
         case folder
         case eagleAPI
 
@@ -25,6 +27,8 @@ struct LibraryAddView: View {
 
         var title: LocalizedStringKey {
             switch self {
+            case .bridge:
+                return "Eagle Bridge"
             case .folder:
                 return "Folder"
             case .eagleAPI:
@@ -53,6 +57,7 @@ struct LibraryAddView: View {
     @State private var validatedAPIConnection: APIConnectionData?
     @State private var apiMediaLibraryName: String?
     @State private var apiMediaBookmarkData: Data?
+    @State private var bridgePairingURLText = ""
     @State private var validationMessage: String?
 
     @State private var isLoading = false
@@ -81,6 +86,11 @@ struct LibraryAddView: View {
                     LibraryFolderSelectView { name, bookmarkData in
                         apiMediaLibraryName = name
                         apiMediaBookmarkData = bookmarkData
+                        path = NavigationPath()
+                    }
+                case .bridgeQRCodeScanner:
+                    BridgeQRCodeScannerView { value in
+                        bridgePairingURLText = value
                         path = NavigationPath()
                     }
                 }
@@ -113,7 +123,7 @@ struct LibraryAddView: View {
                             }
                         }
                     }
-                    .disabled(validFormData == nil || isLoading)
+                    .disabled(connectionMode == .bridge || validFormData == nil || isLoading)
                 }
             }
             .onChange(of: apiBaseURLText) {
@@ -142,6 +152,8 @@ struct LibraryAddView: View {
     @ViewBuilder
     private var setupSections: some View {
         switch connectionMode {
+        case .bridge:
+            bridgeSetupSections
         case .folder:
             folderSetupSections
         case .eagleAPI:
@@ -185,8 +197,22 @@ struct LibraryAddView: View {
         )
     }
 
+    private var bridgeSetupSections: some View {
+        EagleBridgeSetupGuideView(
+            pairingURLText: $bridgePairingURLText,
+            validationMessage: validationMessage,
+            isLoading: isLoading,
+            scanQRCode: {
+                path.append(Destination.bridgeQRCodeScanner)
+            },
+            connectBridge: connectEagleBridge
+        )
+    }
+
     private var validFormData: FormData? {
         switch connectionMode {
+        case .bridge:
+            return nil
         case .folder:
             return folderFormData
         case .eagleAPI:
@@ -268,6 +294,56 @@ struct LibraryAddView: View {
                 await MainActor.run {
                     clearAPIValidation()
                     validationMessage = validationFailureMessage(for: error, data: data)
+                }
+            }
+
+            await MainActor.run {
+                isLoading = false
+            }
+        }
+    }
+
+    private func connectEagleBridge() {
+        let trimmedPairingURL = bridgePairingURLText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let pairingURL = URL(string: trimmedPairingURL) else {
+            validationMessage = EagleBridgePairingError.invalidPairingURL.localizedDescription
+            return
+        }
+
+        isLoading = true
+        validationMessage = nil
+
+        Task {
+            do {
+                let payload = try EagleBridgePairingPayload(pairingURL: pairingURL)
+                let result = try await EagleBridgePairingClient().claim(payload)
+                let client = EagleAPIClient(
+                    configuration: EagleAPIConfiguration(
+                        baseURL: result.apiBaseURL,
+                        token: result.deviceToken,
+                        timeoutInterval: 5,
+                        authentication: .bearerToken
+                    ),
+                    retryPolicy: .none
+                )
+                _ = try await client.appInfo()
+                let apiLibraryInfo = try await client.libraryInfo()
+                let displayName = apiLibraryInfo.name ?? result.library.name ?? String(localized: "Eagle Library")
+                let newLibrary = try await repositories.library.createEagleBridge(
+                    name: displayName,
+                    apiBaseURL: result.apiBaseURL,
+                    deviceToken: result.deviceToken,
+                    libraryPath: apiLibraryInfo.path ?? result.library.path
+                )
+
+                await MainActor.run {
+                    settingsManager.setActiveLibrary(id: newLibrary.id)
+                    dismiss()
+                }
+            } catch {
+                Logger.app.error("Failed to pair Eagle Bridge: \(error)")
+                await MainActor.run {
+                    validationMessage = error.localizedDescription
                 }
             }
 

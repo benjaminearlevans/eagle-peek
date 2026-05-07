@@ -10,6 +10,7 @@ import OSLog
 
 enum EagleAPIMediaCacheSetup {
     case available(EagleAPIMediaCache)
+    case bridge(EagleBridgeMediaCache)
     case failed(String)
 }
 

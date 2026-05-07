@@ -10,6 +10,7 @@ import Foundation
 enum LibrarySourceKind: String, Codable, Hashable {
     case directFolder
     case eagleAPI
+    case eagleBridge
     case offlineCache
 }
 

@@ -36,7 +36,7 @@ struct SettingsView: View {
                 Section("Library") {
                     if library.isEagleAPISource {
                         LabeledContent("Metadata source") {
-                            Text("Eagle API")
+                            Text(metadataSourceLabel)
                                 .foregroundStyle(.secondary)
                         }
 
@@ -46,19 +46,26 @@ struct SettingsView: View {
                                 .lineLimit(1)
                         }
 
-                        NavigationLink(value: Destination.apiMediaFolderSelect) {
+                        if library.isEagleBridgeSource {
                             LabeledContent("Media previews") {
-                                if library.hasEagleAPIMediaFolder {
-                                    Text("Configured")
-                                        .foregroundStyle(.secondary)
-                                } else {
-                                    Text("Set Up")
-                                        .foregroundColor(.accentColor)
+                                Text("Via Bridge")
+                                    .foregroundStyle(.secondary)
+                            }
+                        } else {
+                            NavigationLink(value: Destination.apiMediaFolderSelect) {
+                                LabeledContent("Media previews") {
+                                    if library.hasEagleAPIMediaFolder {
+                                        Text("Configured")
+                                            .foregroundStyle(.secondary)
+                                    } else {
+                                        Text("Set Up")
+                                            .foregroundColor(.accentColor)
+                                    }
                                 }
                             }
                         }
 
-                        Text("Eagle API syncs metadata and edits. Select the same .library folder through Files to cache image previews and make the viewer work offline.")
+                        Text(metadataSourceExplanation)
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                     } else {
@@ -213,6 +220,22 @@ struct SettingsView: View {
         case .none, .success:
             return AppTheme.Status.neutral
         }
+    }
+
+    private var metadataSourceLabel: String {
+        if library.isEagleBridgeSource {
+            return String(localized: "Eagle Bridge")
+        }
+
+        return String(localized: "Eagle API")
+    }
+
+    private var metadataSourceExplanation: String {
+        if library.isEagleBridgeSource {
+            return String(localized: "Eagle Bridge syncs metadata, edits, and media previews through the Mac plugin. Keep Eagle Desktop and the bridge plugin running for live sync.")
+        }
+
+        return String(localized: "Eagle API syncs metadata and edits. Select the same .library folder through Files to cache image previews and make the viewer work offline.")
     }
 
     private var apiEndpointLabel: String {

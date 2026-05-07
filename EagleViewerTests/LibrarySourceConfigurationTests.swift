@@ -64,4 +64,29 @@ final class LibrarySourceConfigurationTests: XCTestCase {
         XCTAssertNil(updatedLibrary.lastImportError)
         XCTAssertEqual(updatedLibrary.lastImportFailureCount, 0)
     }
+
+    func test_createEagleBridge_withPairingResult_shouldPersistBridgeConfiguration() async throws {
+        // Arrange
+        let repositories = Repositories.empty()
+        let apiBaseURL = URL(string: "http://192.168.1.50:41695/api/v2/")!
+
+        // Act
+        let library = try await repositories.library.createEagleBridge(
+            name: "Bridge Eagle",
+            apiBaseURL: apiBaseURL,
+            deviceToken: "bridge-token",
+            libraryPath: "/Users/test/Eagle.library"
+        )
+
+        // Assert
+        XCTAssertTrue(library.isEagleAPISource)
+        XCTAssertTrue(library.isEagleBridgeSource)
+        XCTAssertFalse(library.hasEagleAPIMediaFolder)
+        XCTAssertEqual(library.sourceKind, .eagleBridge)
+        XCTAssertEqual(library.apiBaseURL, apiBaseURL.absoluteString)
+        XCTAssertEqual(library.apiToken, "bridge-token")
+        XCTAssertEqual(library.apiLibraryPath, "/Users/test/Eagle.library")
+        XCTAssertEqual(library.eagleAPIConfiguration?.authentication, .bearerToken)
+        XCTAssertEqual(library.eagleBridgeMediaBaseURL?.absoluteString, "http://192.168.1.50:41695/media/v1/")
+    }
 }

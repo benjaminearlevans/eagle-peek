@@ -75,6 +75,10 @@ struct EagleAPIClient {
         request.httpMethod = method
         request.setValue("application/json", forHTTPHeaderField: "Accept")
 
+        if configuration.authentication == .bearerToken, let token = configuration.token {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+
         if let body {
             request.httpBody = try encoder.encode(body)
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -141,7 +145,9 @@ struct EagleAPIClient {
         let baseURL = configuration.normalizedBaseURL
         let url = baseURL.appending(path: path, directoryHint: .notDirectory)
 
-        guard let token = configuration.token else {
+        guard configuration.authentication == .queryToken,
+              let token = configuration.token
+        else {
             return url
         }
 
