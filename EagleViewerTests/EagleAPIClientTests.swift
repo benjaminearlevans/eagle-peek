@@ -10,6 +10,43 @@ import XCTest
 @testable import EagleViewer
 
 final class EagleAPIClientTests: XCTestCase {
+    func test_urlFromUserInput_withoutScheme_shouldDefaultToHTTP() throws {
+        // Arrange
+        let input = "192.168.0.66"
+
+        // Act
+        let url = try XCTUnwrap(EagleAPIConfiguration.url(fromUserInput: input))
+
+        // Assert
+        XCTAssertEqual(url.absoluteString, "http://192.168.0.66")
+    }
+
+    func test_normalizedBaseURL_withoutPortOrPath_shouldUseEagleAPIDefaults() throws {
+        // Arrange
+        let configuration = EagleAPIConfiguration(
+            baseURL: URL(string: "http://192.168.0.66")!
+        )
+
+        // Act
+        let url = configuration.normalizedBaseURL
+
+        // Assert
+        XCTAssertEqual(url.absoluteString, "http://192.168.0.66:41595/api/v2/")
+    }
+
+    func test_normalizedBaseURL_withoutPort_shouldPreserveAPIRootAndUseEaglePort() throws {
+        // Arrange
+        let configuration = EagleAPIConfiguration(
+            baseURL: URL(string: "http://192.168.0.66/api/v2/")!
+        )
+
+        // Act
+        let url = configuration.normalizedBaseURL
+
+        // Assert
+        XCTAssertEqual(url.absoluteString, "http://192.168.0.66:41595/api/v2/")
+    }
+
     func test_urlRequest_withToken_shouldAppendTokenQueryParameter() throws {
         // Arrange
         let configuration = EagleAPIConfiguration(
@@ -159,6 +196,18 @@ final class EagleAPIClientTests: XCTestCase {
         // Assert
         XCTAssertEqual(info.version, "4.0.0")
         XCTAssertEqual(requestCount, 2)
+    }
+
+    func test_retryPolicy_withOfflineError_shouldFailFast() throws {
+        // Arrange
+        let error = URLError(.notConnectedToInternet)
+        let retryPolicy = EagleAPIRetryPolicy.default
+
+        // Act
+        let shouldRetry = retryPolicy.shouldRetry(error: error)
+
+        // Assert
+        XCTAssertFalse(shouldRetry)
     }
 
     func test_appInfo_withAPIStatusError_shouldNotRetry() async throws {
