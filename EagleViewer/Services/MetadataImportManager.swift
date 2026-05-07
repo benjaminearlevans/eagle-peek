@@ -102,8 +102,8 @@ class MetadataImportManager: ObservableObject {
 
                     // Update library import status first
                     do {
+                        let finishedAt = Date()
                         try await dbWriter.write { db in
-                            let now = Date()
                             let errorMessage = finalErrorMessage ?? finalSummary.shortFailureDescription
                             var sql = """
                             UPDATE library
@@ -116,20 +116,30 @@ class MetadataImportManager: ObservableObject {
                                 finalStatus.rawValue,
                                 finalSummary.failureCount,
                                 finalStatus == .success ? nil : errorMessage,
-                                now
+                                finishedAt
                             ]
 
                             if finalStatus.isSuccessful {
                                 sql += ", lastSuccessfulImportAt = ?"
-                                arguments += [now]
+                                arguments += [finishedAt]
                             }
 
                             sql += " WHERE id = ?"
                             arguments += [library.id]
                             try db.execute(sql: sql, arguments: arguments)
                         }
+
+                        let issues = ImportIssueMapper.issues(
+                            libraryId: library.id,
+                            status: finalStatus,
+                            summary: finalSummary,
+                            fatalErrorMessage: finalErrorMessage,
+                            finishedAt: finishedAt
+                        )
+                        let syncIssueRepository = SyncIssueRepository(dbWriter)
+                        try await syncIssueRepository.replaceOpenImportIssues(for: library.id, with: issues)
                     } catch {
-                        Logger.app.warning("Failed to update import status: \(error)")
+                        Logger.app.warning("Failed to update import diagnostics: \(error)")
                     }
                     
                     // Then reset the importing state on main thread

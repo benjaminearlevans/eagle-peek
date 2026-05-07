@@ -176,6 +176,38 @@ enum Migration {
             }
         }
 
+        migrator.registerMigration("create-sync-issues") { db in
+            guard try !db.tableExists("syncIssue") else {
+                return
+            }
+
+            try db.create(table: "syncIssue") { t in
+                t.column("id", .text).primaryKey()
+                t.belongsTo("library", onDelete: .cascade).notNull()
+                t.column("itemId", .text)
+                t.column("category", .text).notNull()
+                t.column("severity", .text).notNull()
+                t.column("title", .text).notNull()
+                t.column("message", .text).notNull()
+                t.column("recoverySuggestion", .text)
+                t.column("resolutionState", .text).notNull()
+                t.column("createdAt", .datetime).notNull()
+                t.column("updatedAt", .datetime).notNull()
+            }
+
+            try db.create(
+                index: "idx_syncIssue_library_state_updatedAt",
+                on: "syncIssue",
+                columns: ["libraryId", "resolutionState", "updatedAt"]
+            )
+
+            try db.create(
+                index: "idx_syncIssue_library_item",
+                on: "syncIssue",
+                columns: ["libraryId", "itemId"]
+            )
+        }
+
         return migrator
     }
 }

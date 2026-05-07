@@ -17,12 +17,14 @@ struct Repositories {
     let library: LibraryRepository
     let folder: FolderRepository
     let searchHistory: SearchHistoryRepository
+    let syncIssue: SyncIssueRepository
 
     init(_ dbWriter: some DatabaseWriter) throws {
         self.dbWriter = dbWriter
         library = LibraryRepository(dbWriter)
         folder = FolderRepository(dbWriter)
         searchHistory = SearchHistoryRepository(dbWriter)
+        syncIssue = SyncIssueRepository(dbWriter)
 
         let migrator = Migration.getMigrator()
         try migrator.migrate(dbWriter)
