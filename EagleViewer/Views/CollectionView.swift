@@ -11,23 +11,23 @@ import SwiftUI
 
 struct AllCollectionView: View {
     var body: some View {
-        CollectionView<AllCollectionRequest>(title: String(localized: "All"), navigationDestination: .all)
+        CollectionView<AllGalleryPageRequest>(title: String(localized: "All"), navigationDestination: .all)
     }
 }
 
 struct UncategorizedCollectionView: View {
     var body: some View {
-        CollectionView<UncategorizedCollectionRequest>(title: String(localized: "Uncategorized"), navigationDestination: .uncategorized)
+        CollectionView<UncategorizedGalleryPageRequest>(title: String(localized: "Uncategorized"), navigationDestination: .uncategorized)
     }
 }
 
 struct RandomCollectionView: View {
     var body: some View {
-        CollectionView<RandomCollectionRequest>(title: String(localized: "Random"), navigationDestination: .random)
+        CollectionView<RandomGalleryPageRequest>(title: String(localized: "Random"), navigationDestination: .random)
     }
 }
 
-struct CollectionView<T: CollectionQueryable>: View where T.Value == [Item], T.Context == DatabaseContext {
+struct CollectionView<T: CollectionPageQueryable>: View where T.Value == GalleryPage, T.Context == DatabaseContext {
     let title: String
     let navigationDestination: NavigationDestination
 
@@ -41,12 +41,20 @@ struct CollectionView<T: CollectionQueryable>: View where T.Value == [Item], T.C
     init(title: String, navigationDestination: NavigationDestination) {
         self.title = title
         self.navigationDestination = navigationDestination
-        _request = State(initialValue: T(libraryId: 0, sortOption: .defaultValue, searchText: ""))
+        _request = State(initialValue: T(
+            libraryId: 0,
+            sortOption: .defaultValue,
+            searchText: "",
+            limit: GalleryPageSize.initial
+        ))
     }
 
     var body: some View {
         ScrollView {
-            ItemListRequestView(request: $request, placeholderType: searchManager.debouncedSearchText.isEmpty ? .default : .search)
+            PagedItemListRequestView(
+                request: $request,
+                placeholderType: searchManager.debouncedSearchText.isEmpty ? .default : .search
+            )
         }
         .ignoresSafeArea(edges: .horizontal)
         .searchDismissible()
@@ -54,61 +62,29 @@ struct CollectionView<T: CollectionQueryable>: View where T.Value == [Item], T.C
         .navigationBarTitleDisplayMode(.inline)
         .onChange(of: library.id, initial: true) {
             request.libraryId = library.id
+            request.limit = GalleryPageSize.initial
         }
         .onChange(of: settingsManager.globalSortOption, initial: true) {
             request.sortOption = settingsManager.globalSortOption
+            request.limit = GalleryPageSize.initial
         }
         .onAppear {
             searchManager.setSearchHandler(initialSearchText: request.searchText) { text in
                 request.searchText = text
+                request.limit = GalleryPageSize.initial
             }
         }
         .safeAreaPadding(.bottom, 52)
     }
 }
 
-protocol CollectionQueryable: ValueObservationQueryable {
+protocol CollectionPageQueryable: GalleryPageQueryable {
     var libraryId: Int64 { get set }
     var sortOption: GlobalSortOption { get set }
     var searchText: String { get set }
-    init(libraryId: Int64, sortOption: GlobalSortOption, searchText: String)
+    init(libraryId: Int64, sortOption: GlobalSortOption, searchText: String, limit: Int)
 }
 
-struct AllCollectionRequest: CollectionQueryable {
-    var libraryId: Int64
-    var sortOption: GlobalSortOption
-    var searchText: String = ""
-
-    static var defaultValue: [Item] { [] }
-
-    func fetch(_ db: Database) throws -> [Item] {
-        try ItemQuery.allItems(libraryId: libraryId, sortOption: sortOption, searchText: searchText)
-            .fetchAll(db)
-    }
-}
-
-struct UncategorizedCollectionRequest: CollectionQueryable {
-    var libraryId: Int64
-    var sortOption: GlobalSortOption
-    var searchText: String = ""
-
-    static var defaultValue: [Item] { [] }
-
-    func fetch(_ db: Database) throws -> [Item] {
-        try ItemQuery.uncategorizedItems(libraryId: libraryId, sortOption: sortOption, searchText: searchText)
-            .fetchAll(db)
-    }
-}
-
-struct RandomCollectionRequest: CollectionQueryable {
-    var libraryId: Int64
-    var sortOption: GlobalSortOption
-    var searchText: String = ""
-
-    static var defaultValue: [Item] { [] }
-
-    func fetch(_ db: Database) throws -> [Item] {
-        try ItemQuery.randomItems(libraryId: libraryId, searchText: searchText)
-            .fetchAll(db)
-    }
-}
+extension AllGalleryPageRequest: CollectionPageQueryable {}
+extension UncategorizedGalleryPageRequest: CollectionPageQueryable {}
+extension RandomGalleryPageRequest: CollectionPageQueryable {}

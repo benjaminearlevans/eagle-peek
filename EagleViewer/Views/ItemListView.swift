@@ -12,6 +12,8 @@ import SwiftUI
 struct ItemListView: View {
     let items: [Item]
     let placeholderType: PlaceholderType
+    let totalItemCount: Int?
+    let loadNextPage: (() -> Void)?
 
     @EnvironmentObject var imageViewerManager: ImageViewerManager
     @EnvironmentObject private var searchManager: SearchManager
@@ -20,9 +22,16 @@ struct ItemListView: View {
 
     private let renderWindow = GalleryRenderWindow()
 
-    init(items: [Item], placeholderType: PlaceholderType = .none) {
+    init(
+        items: [Item],
+        placeholderType: PlaceholderType = .none,
+        totalItemCount: Int? = nil,
+        loadNextPage: (() -> Void)? = nil
+    ) {
         self.items = items
         self.placeholderType = placeholderType
+        self.totalItemCount = totalItemCount
+        self.loadNextPage = loadNextPage
     }
 
     private func needShowType(item: Item) -> Bool {
@@ -55,6 +64,8 @@ struct ItemListView: View {
             let availableFilters = ItemMediaFilter.availableFilters(for: items)
             let filteredItems = selectedFilter.items(from: items)
             let renderedItems = Array(filteredItems.prefix(visibleItemCount))
+            let displayTotalCount = totalItemCount ?? filteredItems.count
+            let hasUnloadedItems = filteredItems.count < displayTotalCount
 
             VStack(alignment: .leading, spacing: 12) {
                 if availableFilters.count > 1 {
@@ -105,18 +116,18 @@ struct ItemListView: View {
                                         }
                                         .onAppear {
                                             if item == renderedItems.last {
-                                                loadMoreIfNeeded(totalCount: filteredItems.count)
+                                                loadMoreIfNeeded(loadedCount: filteredItems.count, totalCount: displayTotalCount)
                                             }
                                         }
                                 }
                             }
 
-                            if renderedItems.count < filteredItems.count {
+                            if renderedItems.count < filteredItems.count || hasUnloadedItems {
                                 GalleryLoadMoreFooter(
                                     renderedCount: renderedItems.count,
-                                    totalCount: filteredItems.count,
+                                    totalCount: displayTotalCount,
                                     loadMore: {
-                                        loadMoreIfNeeded(totalCount: filteredItems.count)
+                                        loadMoreIfNeeded(loadedCount: filteredItems.count, totalCount: displayTotalCount)
                                     }
                                 )
                             }
@@ -137,8 +148,10 @@ struct ItemListView: View {
             .onChange(of: selectedFilter) {
                 resetRenderWindow(totalCount: filteredItems.count)
             }
-            .onChange(of: items.count) {
-                resetRenderWindow(totalCount: filteredItems.count)
+            .onChange(of: items.count) { oldCount, newCount in
+                if newCount < oldCount {
+                    resetRenderWindow(totalCount: filteredItems.count)
+                }
             }
         }
     }
@@ -147,12 +160,17 @@ struct ItemListView: View {
         visibleItemCount = renderWindow.initialCount(total: totalCount)
     }
 
-    private func loadMoreIfNeeded(totalCount: Int) {
-        guard visibleItemCount < totalCount else {
+    private func loadMoreIfNeeded(loadedCount: Int, totalCount: Int) {
+        if visibleItemCount < loadedCount {
+            visibleItemCount = renderWindow.nextCount(current: visibleItemCount, total: loadedCount)
             return
         }
 
-        visibleItemCount = renderWindow.nextCount(current: visibleItemCount, total: totalCount)
+        guard loadedCount < totalCount else {
+            return
+        }
+
+        loadNextPage?()
     }
 
     private func ensureVisible(_ item: Item, in items: [Item]) {
@@ -187,7 +205,7 @@ struct ItemListView: View {
 
     private func filterCountText(visibleItemCount: Int) -> String {
         if selectedFilter == .all {
-            return String(localized: "\(items.count) items")
+            return String(localized: "\(visibleItemCount) of \(totalItemCount ?? items.count) items")
         }
 
         return String(localized: "\(visibleItemCount) of \(items.count) items")
@@ -205,6 +223,41 @@ struct ItemListRequestView<T: ValueObservationQueryable>: View where T.Value == 
 
     var body: some View {
         ItemListView(items: items, placeholderType: placeholderType)
+    }
+}
+
+struct PagedItemListRequestView<T: GalleryPageQueryable>: View where T.Value == GalleryPage, T.Context == DatabaseContext {
+    @Query<T> private var page: GalleryPage
+    @Binding private var request: T
+    let placeholderType: PlaceholderType
+
+    init(request: Binding<T>, placeholderType: PlaceholderType = .none) {
+        _request = request
+        _page = Query(request, in: \.databaseContext)
+        self.placeholderType = placeholderType
+    }
+
+    init(request: Query<T>.Wrapper, placeholderType: PlaceholderType = .none) {
+        _request = request.request
+        _page = Query(request.request, in: \.databaseContext)
+        self.placeholderType = placeholderType
+    }
+
+    var body: some View {
+        ItemListView(
+            items: page.items,
+            placeholderType: placeholderType,
+            totalItemCount: page.totalCount,
+            loadNextPage: loadNextPage
+        )
+    }
+
+    private func loadNextPage() {
+        guard request.limit < page.totalCount else {
+            return
+        }
+
+        request.limit = min(page.totalCount, request.limit + GalleryPageSize.increment)
     }
 }
 

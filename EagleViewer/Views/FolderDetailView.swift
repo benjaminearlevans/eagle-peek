@@ -20,7 +20,7 @@ struct FolderDetailView: View {
 
 struct FolderDetailInnerView: View {
     let folder: Folder
-    @Query<FolderItemsRequest> private var items: [Item]
+    @Query<FolderGalleryPageRequest> private var page: GalleryPage
     @Query<ChildFoldersRequest> private var childFolders: [Folder]
 
     @EnvironmentObject private var settingsManager: SettingsManager
@@ -29,7 +29,7 @@ struct FolderDetailInnerView: View {
 
     init(folder: Folder) {
         self.folder = folder
-        _items = Query(FolderItemsRequest(folder: folder, globalSortOption: GlobalSortOption.defaultValue))
+        _page = Query(FolderGalleryPageRequest(folder: folder, globalSortOption: GlobalSortOption.defaultValue))
         _childFolders = Query(ChildFoldersRequest(folder: folder, folderSortOption: FolderSortOption.defaultValue))
     }
 
@@ -38,7 +38,7 @@ struct FolderDetailInnerView: View {
             VStack(spacing: 16) {
                 if !childFolders.isEmpty {
                     VStack(alignment: .leading, spacing: 12) {
-                        if !items.isEmpty {
+                        if !page.items.isEmpty {
                             Text("Subfolders")
                                 .font(.title2)
                                 .fontWeight(.semibold)
@@ -48,7 +48,7 @@ struct FolderDetailInnerView: View {
                         FolderListView(folders: childFolders, placeholderType: .none, onSelected: onChildFolderSelected)
                     }
                 }
-                if !items.isEmpty || childFolders.isEmpty {
+                if !page.items.isEmpty || childFolders.isEmpty {
                     VStack(alignment: .leading, spacing: 12) {
                         if !childFolders.isEmpty {
                             Text("Images")
@@ -57,7 +57,10 @@ struct FolderDetailInnerView: View {
                                 .foregroundColor(.secondary)
                                 .padding(.horizontal, 20)
                         }
-                        ItemListView(items: items, placeholderType: childFolders.isEmpty ? (searchManager.debouncedSearchText.isEmpty ? .default : .search) : .none)
+                        PagedItemListRequestView(
+                            request: $page,
+                            placeholderType: childFolders.isEmpty ? (searchManager.debouncedSearchText.isEmpty ? .default : .search) : .none
+                        )
                             .ignoresSafeArea(edges: .horizontal)
                     }
                 }
@@ -68,18 +71,21 @@ struct FolderDetailInnerView: View {
         .navigationTitle(folder.name)
         .navigationBarTitleDisplayMode(.inline)
         .onChange(of: folder, initial: true) {
-            $items.folder.wrappedValue = folder
+            $page.folder.wrappedValue = folder
+            $page.limit.wrappedValue = GalleryPageSize.initial
             $childFolders.folder.wrappedValue = folder
         }
         .onChange(of: settingsManager.globalSortOption, initial: true) {
-            $items.globalSortOption.wrappedValue = settingsManager.globalSortOption
+            $page.globalSortOption.wrappedValue = settingsManager.globalSortOption
+            $page.limit.wrappedValue = GalleryPageSize.initial
         }
         .onChange(of: settingsManager.folderSortOption, initial: true) {
             $childFolders.folderSortOption.wrappedValue = settingsManager.folderSortOption
         }
         .onAppear {
-            searchManager.setSearchHandler(initialSearchText: $items.searchText.wrappedValue) { text in
-                $items.searchText.wrappedValue = text
+            searchManager.setSearchHandler(initialSearchText: $page.searchText.wrappedValue) { text in
+                $page.searchText.wrappedValue = text
+                $page.limit.wrappedValue = GalleryPageSize.initial
                 $childFolders.searchText.wrappedValue = text
             }
         }
@@ -130,18 +136,5 @@ struct ChildFoldersRequest: ValueObservationQueryable {
             folderSortOption: folderSortOption,
             searchText: searchText
         ).fetchAll(db)
-    }
-}
-
-struct FolderItemsRequest: ValueObservationQueryable {
-    var folder: Folder
-    var globalSortOption: GlobalSortOption
-    var searchText: String = ""
-
-    static var defaultValue: [Item] { [] }
-
-    func fetch(_ db: Database) throws -> [Item] {
-        return try FolderQuery.folderItems(folder: folder, globalSortOption: globalSortOption, searchText: searchText)
-            .fetchAll(db)
     }
 }
