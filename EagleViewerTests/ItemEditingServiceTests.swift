@@ -52,6 +52,65 @@ final class ItemEditingServiceTests: XCTestCase {
         XCTAssertEqual(payload.tags, ["poster", "design"])
     }
 
+    func test_setRating_withAPIClientSuccess_shouldWriteThroughAndClearQueuedOperation() async throws {
+        // Arrange
+        let repositories = Repositories.empty()
+        let library = try await createLibrary(in: repositories)
+        let itemId = Item.ID(libraryId: library.id, itemId: "ITEM-A")
+        try await insertItem(itemId: itemId, dbWriter: repositories.dbWriter)
+        let transport = RecordingEagleAPITransport(responses: [
+            Data(#"{"status":"success"}"#.utf8),
+        ])
+        let client = EagleAPIClient(configuration: .localhost(), transport: transport)
+        let service = ItemEditingService(dbWriter: repositories.dbWriter, apiClient: client)
+
+        // Act
+        try await service.setRating(itemId: itemId, rating: 4)
+        let operations = try await repositories.syncOperation.pendingOperations(for: library.id)
+        let requests = await transport.requests
+        let requestBody = try XCTUnwrap(requests.first?.httpBody)
+        let updateRequest = try JSONDecoder().decode(EagleItemUpdateRequest.self, from: requestBody)
+
+        // Assert
+        XCTAssertTrue(operations.isEmpty)
+        XCTAssertEqual(requests.first?.url?.path, "/api/v2/item/update")
+        XCTAssertEqual(updateRequest.id, "ITEM-A")
+        XCTAssertEqual(updateRequest.star, 4)
+    }
+
+    func test_replaceTags_withAPIClientFailure_shouldKeepQueuedOperationForRetry() async throws {
+        // Arrange
+        let repositories = Repositories.empty()
+        let library = try await createLibrary(in: repositories)
+        let itemId = Item.ID(libraryId: library.id, itemId: "ITEM-A")
+        try await insertItem(itemId: itemId, dbWriter: repositories.dbWriter)
+        let transport = FailingEagleAPITransport(error: URLError(.cannotConnectToHost))
+        let client = EagleAPIClient(
+            configuration: .localhost(),
+            transport: transport,
+            retryPolicy: .none
+        )
+        let service = ItemEditingService(dbWriter: repositories.dbWriter, apiClient: client)
+
+        // Act
+        do {
+            try await service.replaceTags(itemId: itemId, tags: ["synced"])
+            XCTFail("Expected API write-through to throw.")
+        } catch {
+            // Assert below.
+        }
+        let storedItem = try await fetchItem(itemId: itemId, dbWriter: repositories.dbWriter)
+        let operations = try await repositories.syncOperation.pendingOperations(for: library.id)
+        let payload = try SyncOperationEncoder().decodeUpdateItem(from: operations.first!.payload)
+        let requestCount = await transport.requestCount
+
+        // Assert
+        XCTAssertEqual(storedItem?.tags, ["synced"])
+        XCTAssertEqual(operations.count, 1)
+        XCTAssertEqual(payload.tags, ["synced"])
+        XCTAssertEqual(requestCount, 1)
+    }
+
     private func createLibrary(in repositories: Repositories) async throws -> Library {
         try await repositories.library.create(
             name: "Test Library",
@@ -93,5 +152,40 @@ final class ItemEditingServiceTests: XCTestCase {
                 .filter(Column("itemId") == itemId.itemId)
                 .fetchOne(db)
         }
+    }
+}
+
+private actor RecordingEagleAPITransport: EagleAPITransport {
+    private var responses: [Data]
+    private(set) var requests: [URLRequest] = []
+
+    init(responses: [Data]) {
+        self.responses = responses
+    }
+
+    func data(for request: URLRequest) async throws -> (Data, URLResponse) {
+        requests.append(request)
+        let data = responses.isEmpty ? Data(#"{"status":"success"}"#.utf8) : responses.removeFirst()
+        let response = HTTPURLResponse(
+            url: request.url!,
+            statusCode: 200,
+            httpVersion: nil,
+            headerFields: nil
+        )!
+        return (data, response)
+    }
+}
+
+private actor FailingEagleAPITransport: EagleAPITransport {
+    private let error: Error
+    private(set) var requestCount = 0
+
+    init(error: Error) {
+        self.error = error
+    }
+
+    func data(for request: URLRequest) async throws -> (Data, URLResponse) {
+        requestCount += 1
+        throw error
     }
 }

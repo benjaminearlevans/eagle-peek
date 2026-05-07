@@ -9,11 +9,22 @@ import Foundation
 import GRDB
 
 struct ItemEditingService {
+    private struct QueuedItemEdit {
+        let operation: SyncOperation
+        let updateRequest: EagleItemUpdateRequest
+    }
+
     private let dbWriter: any DatabaseWriter
+    private let apiClient: EagleAPIClient?
     private let operationEncoder: SyncOperationEncoder
 
-    init(dbWriter: any DatabaseWriter, operationEncoder: SyncOperationEncoder = SyncOperationEncoder()) {
+    init(
+        dbWriter: any DatabaseWriter,
+        apiClient: EagleAPIClient? = nil,
+        operationEncoder: SyncOperationEncoder = SyncOperationEncoder()
+    ) {
         self.dbWriter = dbWriter
+        self.apiClient = apiClient
         self.operationEncoder = operationEncoder
     }
 
@@ -43,7 +54,7 @@ struct ItemEditingService {
         itemId: Item.ID,
         mutation: (inout StoredItem) throws -> EagleItemUpdateRequest
     ) async throws {
-        try await dbWriter.write { db in
+        let edit = try await dbWriter.write { db in
             guard var item = try StoredItem
                 .filter(Column("libraryId") == itemId.libraryId)
                 .filter(Column("itemId") == itemId.itemId)
@@ -65,7 +76,15 @@ struct ItemEditingService {
                 baselineModificationTime: baselineModificationTime
             )
             try SyncOperationRepository.insert(operation, db: db)
+            return QueuedItemEdit(operation: operation, updateRequest: updateRequest)
         }
+
+        guard let apiClient else {
+            return
+        }
+
+        try await apiClient.updateItem(edit.updateRequest)
+        try await SyncOperationRepository(dbWriter).removeOperation(id: edit.operation.id)
     }
 
     private func normalized(_ tags: [String]) -> [String] {

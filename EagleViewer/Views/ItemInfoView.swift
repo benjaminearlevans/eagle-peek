@@ -13,6 +13,7 @@ struct ItemInfoView: View {
     @Query<StoredItemRequest> private var item: StoredItem
     @Query<ItemFoldersRequest> private var folders: [Folder]
 
+    @Environment(\.library) private var library
     @Environment(\.dismiss) private var dismiss
     @Environment(\.repositories) private var repositories
     @State private var annotationDraft = ""
@@ -71,7 +72,12 @@ struct ItemInfoView: View {
     }
 
     private var editingService: ItemEditingService {
-        ItemEditingService(dbWriter: repositories.dbWriter)
+        ItemEditingService(
+            dbWriter: repositories.dbWriter,
+            apiClient: library.eagleAPIConfiguration.map { configuration in
+                EagleAPIClient(configuration: configuration)
+            }
+        )
     }
 
     private func updateRating(_ rating: Int) {
