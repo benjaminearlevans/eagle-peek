@@ -10,6 +10,7 @@ import SwiftUI
 struct SettingsView: View {
     enum Destination: Hashable {
         case folderSelect
+        case apiMediaFolderSelect
         case syncIssues
     }
 
@@ -33,14 +34,43 @@ struct SettingsView: View {
         NavigationStack(path: $path) {
             Form {
                 Section("Library") {
-                    NavigationLink(value: Destination.folderSelect) {
-                        LabeledContent("Eagle Library Folder") {
-                            Text(library.name)
+                    if library.isEagleAPISource {
+                        LabeledContent("Metadata source") {
+                            Text("Eagle API")
+                                .foregroundStyle(.secondary)
                         }
-                    }
 
-                    Toggle("Download images locally", isOn: .constant(library.useLocalStorage))
-                        .disabled(true)
+                        LabeledContent("API endpoint") {
+                            Text(apiEndpointLabel)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        }
+
+                        NavigationLink(value: Destination.apiMediaFolderSelect) {
+                            LabeledContent("Media previews") {
+                                if library.hasEagleAPIMediaFolder {
+                                    Text("Configured")
+                                        .foregroundStyle(.secondary)
+                                } else {
+                                    Text("Set Up")
+                                        .foregroundColor(.accentColor)
+                                }
+                            }
+                        }
+
+                        Text("Eagle API syncs metadata and edits. Select the same .library folder through Files to cache image previews and make the viewer work offline.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        NavigationLink(value: Destination.folderSelect) {
+                            LabeledContent("Eagle Library Folder") {
+                                Text(library.name)
+                            }
+                        }
+
+                        Toggle("Download images locally", isOn: .constant(library.useLocalStorage))
+                            .disabled(true)
+                    }
 
                     Button("Change Library...") {
                         showingLibraries = true
@@ -137,6 +167,10 @@ struct SettingsView: View {
                     LibraryFolderSelectView { name, bookmarkData in
                         updateLibraryFolder(name: name, bookmarkData: bookmarkData)
                     }
+                case .apiMediaFolderSelect:
+                    LibraryFolderSelectView { _, bookmarkData in
+                        updateAPIMediaFolder(bookmarkData: bookmarkData)
+                    }
                 case .syncIssues:
                     SyncIssuesView()
                 }
@@ -181,6 +215,20 @@ struct SettingsView: View {
         }
     }
 
+    private var apiEndpointLabel: String {
+        guard let apiBaseURL = library.apiBaseURL,
+              let url = URL(string: apiBaseURL)
+        else {
+            return String(localized: "Not configured")
+        }
+
+        if let host = url.host {
+            return host
+        }
+
+        return apiBaseURL
+    }
+
     private func applyInitialDestinationIfNeeded() {
         guard !didApplyInitialDestination, let initialDestination else {
             return
@@ -209,6 +257,31 @@ struct SettingsView: View {
                 path = NavigationPath()
             } catch {
                 // Handle error
+            }
+        }
+    }
+
+    private func updateAPIMediaFolder(bookmarkData: Data) {
+        Task {
+            do {
+                let updatedLibrary = try await repositories.library.updateEagleAPIMediaFolder(
+                    id: library.id,
+                    bookmarkData: bookmarkData
+                )
+                let activeLibraryURL = await MainActor.run {
+                    libraryFolderManager.updateCurrentLibrary(updatedLibrary)
+                    path = NavigationPath()
+                    return libraryFolderManager.activeLibraryURL
+                }
+
+                await metadataImportManager.startImporting(
+                    library: updatedLibrary,
+                    activeLibraryURL: activeLibraryURL,
+                    dbWriter: repositories.dbWriter,
+                    fullImport: true
+                )
+            } catch {
+                // Existing settings actions fail silently; sync diagnostics surface import failures.
             }
         }
     }

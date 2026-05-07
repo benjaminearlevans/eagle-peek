@@ -49,6 +49,9 @@ class MetadataImportManager: ObservableObject {
             var libraryURL: URL?
             var localURL: URL?
             var libraryAccessError: Error?
+            var apiMediaSourceURL: URL?
+            var apiMediaSourceAccessURL: URL?
+            var apiMediaSourceFailureMessage: String?
             
             // Handle security-scoped resource for Eagle library access
             if library.useLocalStorage {
@@ -76,11 +79,41 @@ class MetadataImportManager: ObservableObject {
                 // Use the already-active library URL from LibraryFolderManager
                 libraryURL = activeLibraryURL
             }
+
+            if library.hasEagleAPIMediaFolder {
+                do {
+                    var isStale = false
+                    let mediaSourceURL = try URL(
+                        resolvingBookmarkData: library.bookmarkData,
+                        options: [],
+                        relativeTo: nil,
+                        bookmarkDataIsStale: &isStale
+                    )
+
+                    if isStale {
+                        throw LibraryFolderError.bookmarkStale
+                    }
+
+                    guard mediaSourceURL.startAccessingSecurityScopedResource() else {
+                        throw LibraryFolderError.accessDenied
+                    }
+
+                    apiMediaSourceURL = mediaSourceURL
+                    apiMediaSourceAccessURL = mediaSourceURL
+                } catch {
+                    Logger.app.warning("Failed to open API media folder bookmark: \(error)")
+                    apiMediaSourceFailureMessage = String(localized: "Metadata synced, but previews could not be cached because the selected Eagle library folder could not be opened. Re-select it in Settings.")
+                }
+            }
             
             // Ensure security-scoped resource is released when task ends
             defer {
                 if localURL != nil, let libraryURL {
                     libraryURL.stopAccessingSecurityScopedResource()
+                }
+
+                if let apiMediaSourceAccessURL {
+                    apiMediaSourceAccessURL.stopAccessingSecurityScopedResource()
                 }
             }
 
@@ -177,6 +210,8 @@ class MetadataImportManager: ObservableObject {
                         library: library,
                         dbWriter: dbWriter,
                         localMediaURL: activeLibraryURL,
+                        mediaSourceURL: apiMediaSourceURL,
+                        mediaSourceFailureMessage: apiMediaSourceFailureMessage,
                         progressHandler: { progress in
                             await MainActor.run {
                                 self.importProgress = progress

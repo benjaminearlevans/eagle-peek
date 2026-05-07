@@ -34,6 +34,8 @@ struct EagleAPILibrarySource: LibrarySource {
             library: library,
             dbWriter: repositories.dbWriter,
             localMediaURL: activeLibraryURL,
+            mediaSourceURL: nil,
+            mediaSourceFailureMessage: nil,
             progressHandler: progressHandler
         )
     }
@@ -47,6 +49,8 @@ struct EagleAPILibrarySource: LibrarySource {
             library: library,
             dbWriter: dbWriter,
             localMediaURL: nil,
+            mediaSourceURL: nil,
+            mediaSourceFailureMessage: nil,
             progressHandler: progressHandler
         )
     }
@@ -55,12 +59,19 @@ struct EagleAPILibrarySource: LibrarySource {
         library: Library,
         dbWriter: any DatabaseWriter,
         localMediaURL: URL?,
+        mediaSourceURL: URL? = nil,
+        mediaSourceFailureMessage: String? = nil,
         progressHandler: @escaping (Double) async -> Void
     ) async throws -> LibrarySyncResult {
         try await importFolders(libraryId: library.id, dbWriter: dbWriter)
         await progressHandler(0.1)
 
-        let mediaCacheSetup = makeMediaCache(library: library, localMediaURL: localMediaURL)
+        let mediaCacheSetup = makeMediaCache(
+            library: library,
+            localMediaURL: localMediaURL,
+            mediaSourceURL: mediaSourceURL,
+            mediaSourceFailureMessage: mediaSourceFailureMessage
+        )
         let result = try await importItems(
             libraryId: library.id,
             mediaCacheSetup: mediaCacheSetup,
@@ -74,7 +85,12 @@ struct EagleAPILibrarySource: LibrarySource {
         return result
     }
 
-    private func makeMediaCache(library: Library, localMediaURL: URL?) -> EagleAPIMediaCacheSetup {
+    private func makeMediaCache(
+        library: Library,
+        localMediaURL: URL?,
+        mediaSourceURL: URL?,
+        mediaSourceFailureMessage: String?
+    ) -> EagleAPIMediaCacheSetup {
         let destinationURL: URL
         do {
             if let localMediaURL {
@@ -87,8 +103,9 @@ struct EagleAPILibrarySource: LibrarySource {
         }
 
         return .available(EagleAPIMediaCache(
-            sourceLibraryURL: library.eagleAPILibraryURL,
-            destinationLibraryURL: destinationURL
+            sourceLibraryURL: mediaSourceURL ?? library.eagleAPILibraryURL,
+            destinationLibraryURL: destinationURL,
+            sourceUnavailableMessage: mediaSourceFailureMessage
         ))
     }
 
