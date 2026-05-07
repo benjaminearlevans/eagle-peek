@@ -25,6 +25,10 @@ enum Migration {
                 t.column("lastImportedFolderMTime", .integer).notNull().defaults(to: 0)
                 t.column("lastImportedItemMTime", .integer).notNull().defaults(to: 0)
                 t.column("lastImportStatus", .text).notNull().defaults(to: ImportStatus.none.rawValue)
+                t.column("lastImportError", .text)
+                t.column("lastImportFailureCount", .integer).notNull().defaults(to: 0)
+                t.column("lastImportFinishedAt", .datetime)
+                t.column("lastSuccessfulImportAt", .datetime)
                 t.column("useLocalStorage", .boolean).notNull()
             }
             
@@ -144,6 +148,15 @@ enum Migration {
 
             // Reset folder import timestamp to force re-import of folders with cover item IDs
             try db.execute(sql: "UPDATE library SET lastImportedFolderMTime = 0")
+        }
+
+        migrator.registerMigration("add-import-diagnostics") { db in
+            try db.alter(table: "library") { t in
+                t.add(column: "lastImportError", .text)
+                t.add(column: "lastImportFailureCount", .integer).notNull().defaults(to: 0)
+                t.add(column: "lastImportFinishedAt", .datetime)
+                t.add(column: "lastSuccessfulImportAt", .datetime)
+            }
         }
 
         return migrator

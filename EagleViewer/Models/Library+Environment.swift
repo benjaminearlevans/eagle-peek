@@ -16,6 +16,10 @@ private struct LibraryEnvironmentKey: EnvironmentKey {
         lastImportedFolderMTime: 0,
         lastImportedItemMTime: 0,
         lastImportStatus: .none,
+        lastImportError: nil,
+        lastImportFailureCount: 0,
+        lastImportFinishedAt: nil,
+        lastSuccessfulImportAt: nil,
         useLocalStorage: false
     )
 }
