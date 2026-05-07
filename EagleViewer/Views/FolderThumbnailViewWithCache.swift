@@ -28,13 +28,13 @@ struct FolderThumbnailViewWithCache: View {
         Group {
             switch coverImageState {
             case .success(let url):
-                CollectionURLThumbnailView(title: folder.name, url: url, showLabel: settingsManager.layout != .col6)
+                CollectionURLThumbnailView(title: folder.name, url: url)
             case .loading:
-                CollectionThumbnailView(title: folder.name, noGradation: true, showLabel: settingsManager.layout != .col6) {
+                CollectionThumbnailView(title: folder.name, noGradation: true) {
                     ThumbnailLoading()
                 }
             default:
-                CollectionThumbnailView(title: folder.name, showLabel: settingsManager.layout != .col6)
+                CollectionThumbnailView(title: folder.name)
             }
         }
         .task(id: folder.id) {

@@ -52,10 +52,14 @@ class LibraryFolderManager: ObservableObject {
             discardAccess()
             currentBookmarkData = nil
 
-            if let libraryURL = library.eagleAPILibraryURL {
+            do {
+                let localURL = try LocalImageStorageManager.shared.getLocalStorageURL(for: library.id)
                 accessState = .open
-                currentLibraryURL = libraryURL
-                activeLibraryURL = libraryURL
+                currentLibraryURL = localURL
+                activeLibraryURL = localURL
+            } catch {
+                Logger.app.error("Failed to get API media cache URL: \(error)")
+                accessState = .closed
             }
 
             return

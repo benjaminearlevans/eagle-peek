@@ -54,12 +54,10 @@ struct WaterfallGridView<Item: Identifiable, Content: View>: View {
     private var spacing: CGFloat {
         if isCollection {
             switch settingsManager.layout {
+            case .col2:
+                return 12
             case .col3:
                 return 10
-            case .col4:
-                return 8
-            case .col6:
-                return 6
             }
         }
 

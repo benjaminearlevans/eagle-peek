@@ -14,8 +14,13 @@ struct ItemImageView: View {
     @EnvironmentObject private var libraryFolderManager: LibraryFolderManager
 
     private var mediaResolution: MediaFileResolution {
-        MediaFileResolver(libraryURL: libraryFolderManager.currentLibraryURL)
-            .resolve(.original, for: item)
+        let resolver = MediaFileResolver(libraryURL: libraryFolderManager.currentLibraryURL)
+        let originalResolution = resolver.resolve(.original, for: item)
+        if case .available = originalResolution {
+            return originalResolution
+        }
+
+        return resolver.resolve(.thumbnail, for: item)
     }
 
     private var aspectRatio: CGSize {

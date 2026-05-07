@@ -176,6 +176,7 @@ class MetadataImportManager: ObservableObject {
                     let result = try await source.synchronize(
                         library: library,
                         dbWriter: dbWriter,
+                        localMediaURL: activeLibraryURL,
                         progressHandler: { progress in
                             await MainActor.run {
                                 self.importProgress = progress

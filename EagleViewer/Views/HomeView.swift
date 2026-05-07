@@ -31,7 +31,17 @@ struct HomeView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 16) {
-                if shouldShowSyncStatusBanner {
+                if metadataImportManager.isImporting {
+                    Button {
+                        settingsInitialDestination = .syncIssues
+                        showingSettings = true
+                    } label: {
+                        SyncProgressBanner(progress: metadataImportManager.importProgress)
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.horizontal, 20)
+                    .padding(.top, 8)
+                } else if shouldShowSyncStatusBanner {
                     Button {
                         settingsInitialDestination = .syncIssues
                         showingSettings = true
@@ -119,8 +129,8 @@ struct HomeView: View {
     }
 
     private var shouldShowSyncStatusBanner: Bool {
-        guard !metadataImportManager.isImporting else {
-            return false
+        if library.isEagleAPISource {
+            return true
         }
 
         switch library.lastImportStatus {
