@@ -49,7 +49,6 @@ struct EagleAPIRetryPolicy: Equatable {
             .dnsLookupFailed,
             .internationalRoamingOff,
             .networkConnectionLost,
-            .notConnectedToInternet,
             .secureConnectionFailed,
             .timedOut,
         ]

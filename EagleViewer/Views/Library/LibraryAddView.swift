@@ -84,7 +84,7 @@ struct LibraryAddView: View {
                 case .eagleAPI:
                     Section(
                         header: Text("Connection"),
-                        footer: Text("Use localhost when testing in Simulator. Use your Mac IP address and Eagle API token when testing on a device.")
+                        footer: Text("Use localhost in Simulator. On a device, use your Mac IP address with Eagle's API port, for example http://192.168.0.66:41595/api/v2/.")
                     ) {
                         TextField("Base URL", text: $apiBaseURLText)
                             .keyboardType(.URL)
@@ -143,7 +143,7 @@ struct LibraryAddView: View {
                                 } catch {
                                     Logger.app.error("Failed to create library: \(error)")
                                     await MainActor.run {
-                                        validationMessage = error.localizedDescription
+                                        validationMessage = validationFailureMessage(for: error, data: data)
                                     }
                                 }
                                 await MainActor.run {
@@ -177,12 +177,15 @@ struct LibraryAddView: View {
 
     private var apiFormData: FormData? {
         let normalizedBaseURLText = apiBaseURLText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let baseURL = URL(string: normalizedBaseURLText), baseURL.scheme != nil, baseURL.host != nil else {
+        guard let baseURL = EagleAPIConfiguration.url(fromUserInput: normalizedBaseURLText),
+              baseURL.scheme != nil,
+              baseURL.host != nil else {
             return nil
         }
 
         let normalizedToken = apiToken.trimmingCharacters(in: .whitespacesAndNewlines)
-        return .eagleAPI(baseURL: baseURL, token: normalizedToken.isEmpty ? nil : normalizedToken)
+        let configuration = EagleAPIConfiguration(baseURL: baseURL, token: normalizedToken)
+        return .eagleAPI(baseURL: configuration.normalizedBaseURL, token: normalizedToken.isEmpty ? nil : normalizedToken)
     }
 
     private func validateEagleAPIConnection() {
@@ -203,7 +206,7 @@ struct LibraryAddView: View {
             } catch {
                 Logger.app.error("Failed to validate Eagle API connection: \(error)")
                 await MainActor.run {
-                    validationMessage = error.localizedDescription
+                    validationMessage = validationFailureMessage(for: error, data: data)
                 }
             }
 
@@ -246,9 +249,43 @@ struct LibraryAddView: View {
         }
 
         let client = EagleAPIClient(
-            configuration: EagleAPIConfiguration(baseURL: baseURL, token: token)
+            configuration: EagleAPIConfiguration(baseURL: baseURL, token: token, timeoutInterval: 3),
+            retryPolicy: .none
         )
         _ = try await client.appInfo()
         return try await client.libraryInfo()
+    }
+
+    private func validationFailureMessage(for error: Error, data: FormData) -> String {
+        if case EagleAPIError.apiStatus(let message) = error {
+            return message
+        }
+
+        if isLocalNetworkPermissionDenied(error) {
+            return String(localized: "Local Network permission is blocked. On iPhone, open Settings > Apps > Eagle Viewer > Local Network, enable it, then try again.")
+        }
+
+        guard case .eagleAPI(let baseURL, _) = data else {
+            return error.localizedDescription
+        }
+
+        let displayURL = EagleAPIConfiguration(baseURL: baseURL).normalizedBaseURL.absoluteString
+        guard let urlError = error as? URLError else {
+            return String(localized: "Could not validate Eagle Desktop at \(displayURL). \(error.localizedDescription)")
+        }
+
+        switch urlError.code {
+        case .notConnectedToInternet:
+            return String(localized: "The device is offline or Local Network access is blocked. Confirm Wi-Fi is connected, then enable Settings > Apps > Eagle Viewer > Local Network.")
+        case .cannotConnectToHost, .cannotFindHost, .timedOut, .networkConnectionLost:
+            return String(localized: "Could not reach Eagle Desktop at \(displayURL). Confirm Eagle is open, Web API is enabled, the URL includes :41595, and both devices are on the same Wi-Fi.")
+        default:
+            return urlError.localizedDescription
+        }
+    }
+
+    private func isLocalNetworkPermissionDenied(_ error: Error) -> Bool {
+        let errorDetails = String(describing: (error as NSError).userInfo)
+        return errorDetails.localizedCaseInsensitiveContains("Local network prohibited")
     }
 }

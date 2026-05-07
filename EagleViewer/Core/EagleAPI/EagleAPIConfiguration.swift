@@ -8,6 +8,9 @@
 import Foundation
 
 struct EagleAPIConfiguration: Equatable, Hashable {
+    static let defaultPort = 41595
+    static let defaultAPIPath = "/api/v2/"
+
     var baseURL: URL
     var token: String?
     var timeoutInterval: TimeInterval
@@ -19,16 +22,55 @@ struct EagleAPIConfiguration: Equatable, Hashable {
     }
 
     static func localhost(token: String? = nil) -> EagleAPIConfiguration {
-        EagleAPIConfiguration(baseURL: URL(string: "http://localhost:41595/api/v2/")!, token: token)
+        EagleAPIConfiguration(baseURL: URL(string: "http://localhost:\(Self.defaultPort)\(Self.defaultAPIPath)")!, token: token)
+    }
+
+    static func url(fromUserInput input: String) -> URL? {
+        let trimmedInput = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmedInput.isEmpty == false else {
+            return nil
+        }
+
+        if trimmedInput.contains("://") {
+            return URL(string: trimmedInput)
+        }
+
+        return URL(string: "http://\(trimmedInput)")
     }
 
     var normalizedBaseURL: URL {
-        let absoluteString = baseURL.absoluteString
-        if absoluteString.hasSuffix("/") {
-            return baseURL
+        guard var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false) else {
+            return baseURL.withTrailingSlash
         }
 
-        return URL(string: absoluteString + "/") ?? baseURL
+        if components.scheme == "http", components.port == nil {
+            components.port = Self.defaultPort
+        }
+
+        if components.path.isEmpty || components.path == "/" {
+            components.path = Self.defaultAPIPath
+        }
+
+        if components.path == "/api/v2" {
+            components.path = Self.defaultAPIPath
+        }
+
+        if components.path.hasSuffix("/") == false {
+            components.path += "/"
+        }
+
+        return components.url ?? baseURL.withTrailingSlash
+    }
+}
+
+private extension URL {
+    var withTrailingSlash: URL {
+        let absoluteString = absoluteString
+        if absoluteString.hasSuffix("/") {
+            return self
+        }
+
+        return URL(string: absoluteString + "/") ?? self
     }
 }
 
