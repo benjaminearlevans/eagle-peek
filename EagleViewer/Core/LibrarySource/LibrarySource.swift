@@ -43,6 +43,16 @@ struct LibrarySyncResult: Codable, Equatable {
     var hasFailures: Bool {
         failureCount > 0
     }
+
+    mutating func append(_ result: LibrarySyncResult) {
+        updatedItemCount += result.updatedItemCount
+        deletedItemCount += result.deletedItemCount
+        failureCount += result.failureCount
+
+        if let latestIssueMessage = result.latestIssueMessage {
+            self.latestIssueMessage = latestIssueMessage
+        }
+    }
 }
 
 protocol LibrarySource {

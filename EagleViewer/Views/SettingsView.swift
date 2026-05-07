@@ -432,3 +432,45 @@ struct SyncStatusBanner: View {
         }
     }
 }
+
+struct SyncProgressBanner: View {
+    let progress: Double
+
+    var body: some View {
+        HStack(spacing: 12) {
+            ProgressView(value: progress)
+                .progressViewStyle(.circular)
+                .tint(.accentColor)
+                .frame(width: 24)
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Syncing library")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.primary)
+
+                Text(String(localized: "\(Int(progress * 100))% complete"))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer(minLength: 8)
+
+            Image(systemName: "chevron.right")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.tertiary)
+                .accessibilityHidden(true)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .glassBackground(in: RoundedRectangle(cornerRadius: AppTheme.Radius.card, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: AppTheme.Radius.card, style: .continuous)
+                .stroke(Color.accentColor.opacity(0.28), lineWidth: 1)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Syncing library")
+        .accessibilityValue(String(localized: "\(Int(progress * 100))% complete"))
+        .accessibilityHint("Opens sync settings")
+    }
+}

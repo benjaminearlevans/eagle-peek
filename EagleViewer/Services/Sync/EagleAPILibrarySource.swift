@@ -33,6 +33,7 @@ struct EagleAPILibrarySource: LibrarySource {
         try await synchronize(
             library: library,
             dbWriter: repositories.dbWriter,
+            localMediaURL: activeLibraryURL,
             progressHandler: progressHandler
         )
     }
@@ -42,11 +43,27 @@ struct EagleAPILibrarySource: LibrarySource {
         dbWriter: any DatabaseWriter,
         progressHandler: @escaping (Double) async -> Void
     ) async throws -> LibrarySyncResult {
+        try await synchronize(
+            library: library,
+            dbWriter: dbWriter,
+            localMediaURL: nil,
+            progressHandler: progressHandler
+        )
+    }
+
+    func synchronize(
+        library: Library,
+        dbWriter: any DatabaseWriter,
+        localMediaURL: URL?,
+        progressHandler: @escaping (Double) async -> Void
+    ) async throws -> LibrarySyncResult {
         try await importFolders(libraryId: library.id, dbWriter: dbWriter)
         await progressHandler(0.1)
 
+        let mediaCacheSetup = makeMediaCache(library: library, localMediaURL: localMediaURL)
         let result = try await importItems(
             libraryId: library.id,
+            mediaCacheSetup: mediaCacheSetup,
             dbWriter: dbWriter,
             progressHandler: { progress in
                 await progressHandler(0.1 + 0.9 * progress)
@@ -55,6 +72,24 @@ struct EagleAPILibrarySource: LibrarySource {
 
         await progressHandler(1.0)
         return result
+    }
+
+    private func makeMediaCache(library: Library, localMediaURL: URL?) -> EagleAPIMediaCacheSetup {
+        let destinationURL: URL
+        do {
+            if let localMediaURL {
+                destinationURL = localMediaURL
+            } else {
+                destinationURL = try LocalImageStorageManager.shared.getLocalStorageURL(for: library.id)
+            }
+        } catch {
+            return .failed(String(localized: "Metadata synced, but API previews could not be cached because local media storage could not be opened."))
+        }
+
+        return .available(EagleAPIMediaCache(
+            sourceLibraryURL: library.eagleAPILibraryURL,
+            destinationLibraryURL: destinationURL
+        ))
     }
 
     private func importFolders(libraryId: Int64, dbWriter: any DatabaseWriter) async throws {
@@ -107,6 +142,7 @@ struct EagleAPILibrarySource: LibrarySource {
 
     private func importItems(
         libraryId: Int64,
+        mediaCacheSetup: EagleAPIMediaCacheSetup,
         dbWriter: any DatabaseWriter,
         progressHandler: @escaping (Double) async -> Void
     ) async throws -> LibrarySyncResult {
@@ -114,6 +150,8 @@ struct EagleAPILibrarySource: LibrarySource {
         let limit = 200
         var processedItemIds = Set<String>()
         var updatedItemCount = 0
+        var mediaResult = LibrarySyncResult.empty
+        var mediaAvailabilityIssue: LibrarySyncResult?
 
         while true {
             try Task.checkCancellation()
@@ -140,6 +178,33 @@ struct EagleAPILibrarySource: LibrarySource {
                     try replaceFolderAssignments(db: db, item: item, storedItem: storedItem)
                 }
             }
+
+            let previewableItems = storedItems.filter { !$0.isTextFile }
+            if !previewableItems.isEmpty {
+                switch mediaCacheSetup {
+                case .available(let mediaCache):
+                    if mediaAvailabilityIssue == nil,
+                       let unavailableResult = mediaCache.unavailableResult()
+                    {
+                        mediaAvailabilityIssue = unavailableResult
+                        mediaResult.append(unavailableResult)
+                    } else if mediaAvailabilityIssue == nil {
+                        let cacheResult = await mediaCache.cachePreviews(for: previewableItems)
+                        mediaResult.append(cacheResult)
+                    }
+                case .failed(let message):
+                    if mediaAvailabilityIssue == nil {
+                        mediaAvailabilityIssue = LibrarySyncResult(
+                            updatedItemCount: 0,
+                            deletedItemCount: 0,
+                            failureCount: 1,
+                            latestIssueMessage: message
+                        )
+                        mediaResult.append(mediaAvailabilityIssue!)
+                    }
+                }
+            }
+
             processedItemIds.formUnion(storedItems.map(\.itemId))
             updatedItemCount += storedItems.count
 
@@ -160,12 +225,14 @@ struct EagleAPILibrarySource: LibrarySource {
             dbWriter: dbWriter
         )
 
-        return LibrarySyncResult(
+        var result = LibrarySyncResult(
             updatedItemCount: updatedItemCount,
             deletedItemCount: deletedItemCount,
             failureCount: 0,
             latestIssueMessage: nil
         )
+        result.append(mediaResult)
+        return result
     }
 
     private func deleteStaleItems(
