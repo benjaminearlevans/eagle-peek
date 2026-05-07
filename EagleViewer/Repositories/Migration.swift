@@ -25,10 +25,6 @@ enum Migration {
                 t.column("lastImportedFolderMTime", .integer).notNull().defaults(to: 0)
                 t.column("lastImportedItemMTime", .integer).notNull().defaults(to: 0)
                 t.column("lastImportStatus", .text).notNull().defaults(to: ImportStatus.none.rawValue)
-                t.column("lastImportError", .text)
-                t.column("lastImportFailureCount", .integer).notNull().defaults(to: 0)
-                t.column("lastImportFinishedAt", .datetime)
-                t.column("lastSuccessfulImportAt", .datetime)
                 t.column("useLocalStorage", .boolean).notNull()
             }
             
@@ -151,11 +147,32 @@ enum Migration {
         }
 
         migrator.registerMigration("add-import-diagnostics") { db in
+            let existingColumns = Set(try db.columns(in: "library").map(\.name))
+            guard ![
+                "lastImportError",
+                "lastImportFailureCount",
+                "lastImportFinishedAt",
+                "lastSuccessfulImportAt",
+            ].allSatisfy(existingColumns.contains) else {
+                return
+            }
+
             try db.alter(table: "library") { t in
-                t.add(column: "lastImportError", .text)
-                t.add(column: "lastImportFailureCount", .integer).notNull().defaults(to: 0)
-                t.add(column: "lastImportFinishedAt", .datetime)
-                t.add(column: "lastSuccessfulImportAt", .datetime)
+                if !existingColumns.contains("lastImportError") {
+                    t.add(column: "lastImportError", .text)
+                }
+
+                if !existingColumns.contains("lastImportFailureCount") {
+                    t.add(column: "lastImportFailureCount", .integer).notNull().defaults(to: 0)
+                }
+
+                if !existingColumns.contains("lastImportFinishedAt") {
+                    t.add(column: "lastImportFinishedAt", .datetime)
+                }
+
+                if !existingColumns.contains("lastSuccessfulImportAt") {
+                    t.add(column: "lastSuccessfulImportAt", .datetime)
+                }
             }
         }
 
