@@ -50,6 +50,60 @@ struct ItemListView: View {
         return false
     }
 
+    private func thumbnailAspectRatio(for item: Item) -> CGFloat {
+        guard item.width > 0, item.height > 0 else {
+            return 1
+        }
+
+        return CGFloat(item.width) / CGFloat(item.height)
+    }
+
+    private func galleryCell(
+        item: Item,
+        filteredItems: [Item],
+        isLastRenderedItem: Bool,
+        displayTotalCount: Int,
+        proxy: ScrollViewProxy
+    ) -> some View {
+        ItemThumbnailView(item: item)
+            .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
+            .clipped()
+            .contentShape(Rectangle())
+            .if(needShowType(item: item)) { view in
+                view.overlay(alignment: .topLeading) {
+                    Text(item.ext.uppercased())
+                        .font(.caption2.weight(.semibold))
+                        .foregroundColor(AppTheme.Colors.imageOverlayText.opacity(0.8))
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 4)
+                        .background(AppTheme.Colors.imageOverlayShadow)
+                        .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
+                        .padding(5)
+                        .allowsHitTesting(false)
+                }
+            }
+            .id(item.itemId)
+            .accessibilityLabel(item.name)
+            .accessibilityHint("Opens media viewer")
+            .onTapGesture {
+                searchManager.hideSearch()
+                imageViewerManager.show(item: item, items: filteredItems, onDismiss: { selectedItem in
+                    ensureVisible(selectedItem, in: filteredItems)
+
+                    if item != selectedItem {
+                        DispatchQueue.main.async {
+                            proxy.scrollTo(selectedItem.itemId, anchor: .center)
+                        }
+                    }
+                })
+            }
+            .onAppear {
+                if isLastRenderedItem {
+                    loadMoreIfNeeded(loadedCount: filteredItems.count, totalCount: displayTotalCount)
+                }
+            }
+    }
+
     var body: some View {
         if items.isEmpty && placeholderType != .none {
             switch placeholderType {
@@ -79,47 +133,18 @@ struct ItemListView: View {
                 } else {
                     ScrollViewReader { proxy in
                         VStack(spacing: 12) {
-                            AdaptiveGridView(isCollection: false) {
-                                ForEach(renderedItems) { item in
-                                    ItemThumbnailView(item: item)
-                                        .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
-                                        .aspectRatio(1, contentMode: .fill)
-                                        .clipped()
-                                        .contentShape(Rectangle())
-                                        .if(needShowType(item: item)) { view in
-                                            view.overlay(alignment: .topLeading) {
-                                                Text(item.ext.uppercased())
-                                                    .font(.caption2.weight(.semibold))
-                                                    .foregroundColor(AppTheme.Colors.imageOverlayText.opacity(0.8))
-                                                    .padding(.horizontal, 6)
-                                                    .padding(.vertical, 4)
-                                                    .background(AppTheme.Colors.imageOverlayShadow)
-                                                    .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
-                                                    .padding(5)
-                                                    .allowsHitTesting(false)
-                                            }
-                                        }
-                                        .id(item.itemId)
-                                        .accessibilityLabel(item.name)
-                                        .accessibilityHint("Opens media viewer")
-                                        .onTapGesture {
-                                            searchManager.hideSearch()
-                                            imageViewerManager.show(item: item, items: filteredItems, onDismiss: { selectedItem in
-                                                ensureVisible(selectedItem, in: filteredItems)
-
-                                                if item != selectedItem {
-                                                    DispatchQueue.main.async {
-                                                        proxy.scrollTo(selectedItem.itemId, anchor: .center)
-                                                    }
-                                                }
-                                            })
-                                        }
-                                        .onAppear {
-                                            if item == renderedItems.last {
-                                                loadMoreIfNeeded(loadedCount: filteredItems.count, totalCount: displayTotalCount)
-                                            }
-                                        }
-                                }
+                            WaterfallGridView(
+                                items: renderedItems,
+                                isCollection: false,
+                                aspectRatio: thumbnailAspectRatio
+                            ) { item in
+                                galleryCell(
+                                    item: item,
+                                    filteredItems: filteredItems,
+                                    isLastRenderedItem: item == renderedItems.last,
+                                    displayTotalCount: displayTotalCount,
+                                    proxy: proxy
+                                )
                             }
 
                             if renderedItems.count < filteredItems.count || hasUnloadedItems {
