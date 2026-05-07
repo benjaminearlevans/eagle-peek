@@ -25,6 +25,18 @@
         }
       }
     },
+    "NSLocalNetworkUsageDescription": {
+      "comment": "Privacy - Local Network Usage Description",
+      "extractionState": "extracted_with_value",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "new",
+            "value": "Eagle Viewer connects to Eagle Desktop on your local network to sync your library."
+          }
+        }
+      }
+    },
     "NSPhotoLibraryAddUsageDescription": {
       "extractionState": "manual",
       "localizations": {
