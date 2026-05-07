@@ -38,7 +38,7 @@ struct CollectionThumbnailView<Content: View>: View {
             if let content = content {
                 content
             } else {
-                Color.gray.opacity(0.4)
+                AppTheme.Colors.placeholderFill
             }
         }
         .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
@@ -51,7 +51,7 @@ struct CollectionThumbnailView<Content: View>: View {
                     Text(title)
                         .font(.caption)
                         .fontWeight(.bold)
-                        .foregroundColor(.white)
+                        .foregroundColor(AppTheme.Colors.imageOverlayText)
                         .lineLimit(1)
                         .padding(.horizontal, 8)
                         .padding(.top, 16)
@@ -60,7 +60,7 @@ struct CollectionThumbnailView<Content: View>: View {
                         .if(!noGradation && content != nil) { view in
                             view.background(
                                 LinearGradient(
-                                    gradient: Gradient(colors: [.clear, .black.opacity(0.4)]),
+                                    gradient: Gradient(colors: [.clear, AppTheme.Colors.imageOverlayShadow]),
                                     startPoint: .top,
                                     endPoint: .bottom
                                 )
@@ -69,8 +69,8 @@ struct CollectionThumbnailView<Content: View>: View {
                 }
             )
         }
-        .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
-        .contentShape(RoundedRectangle(cornerRadius: cornerRadius))
+        .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+        .contentShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
     }
 }
 

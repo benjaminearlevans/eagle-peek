@@ -32,13 +32,13 @@ struct CollectionLinksView: View {
 
             NavigationLink(value: NavigationDestination.random) {
                 CollectionThumbnailView(title: String(localized: "Random"), noGradation: true) {
-                    Color.gray.opacity(0.4)
+                    AppTheme.Colors.placeholderFill
                         .overlay(
                             VStack {
                                 Spacer()
                                 Image(systemName: "shuffle")
                                     .font(.system(size: 30))
-                                    .foregroundColor(.white)
+                                    .foregroundColor(AppTheme.Colors.imageOverlayText)
                                 Spacer()
                             }
                         )

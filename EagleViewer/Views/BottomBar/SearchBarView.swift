@@ -39,7 +39,7 @@ struct SearchBarView: View {
                 }
                 .padding(.horizontal)
                 .frame(height: 44)
-                .contentShape(RoundedRectangle(cornerRadius: 22))
+                .contentShape(RoundedRectangle(cornerRadius: AppTheme.Radius.control))
                 .regularGlassEffect(interactive: false)
 
                 Button(action: {
@@ -191,7 +191,7 @@ struct SearchSuggestInnerView: View {
                     }
                 }
                 .fixedSize(horizontal: true, vertical: false)
-                .glassBackground(in: RoundedRectangle(cornerRadius: 12))
+                .glassBackground(in: RoundedRectangle(cornerRadius: AppTheme.Radius.panel, style: .continuous))
             }
 
             Spacer()

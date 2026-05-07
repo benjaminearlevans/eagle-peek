@@ -49,17 +49,17 @@ struct ThumbnailView: View {
 struct ThumbnailError: View {
     var body: some View {
         Rectangle()
-            .fill(Color.gray.opacity(0.3))
+            .fill(AppTheme.Colors.placeholderFill)
     }
 }
 
 struct ThumbnailLoading: View {
     var body: some View {
         ZStack {
-            Color.gray.opacity(0.4)
+            AppTheme.Colors.placeholderFill
 
             Image(systemName: "photo")
-                .foregroundColor(.gray.opacity(0.2))
+                .foregroundStyle(AppTheme.Colors.placeholderSymbol)
                 .font(.system(size: 24))
         }
     }
@@ -85,16 +85,16 @@ struct TextThumbnailView: View {
         ZStack {
             switch style {
             case .standard:
-                Color.gray.opacity(0.4)
+                AppTheme.Colors.placeholderFill
 
                 VStack(spacing: 8) {
                     Image(systemName: "doc.plaintext")
-                        .foregroundColor(.gray.opacity(0.9))
+                        .foregroundStyle(.secondary)
                         .font(.system(size: 24, weight: .regular))
 
                     Text(itemName)
                         .font(.caption.weight(.bold))
-                        .foregroundColor(.gray.opacity(0.9))
+                        .foregroundStyle(.secondary)
                         .lineLimit(2)
                         .multilineTextAlignment(.center)
                         .frame(height: 32, alignment: .top)
@@ -108,7 +108,7 @@ struct TextThumbnailView: View {
                     .foregroundColor(.secondary.opacity(0.8))
                     .font(.system(size: 20, weight: .regular))
                     .padding(6)
-                    .background(Color(uiColor: .secondarySystemBackground))
+                    .background(AppTheme.Colors.secondaryBackground)
             }
         }
         .onAppear {

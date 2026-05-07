@@ -14,7 +14,7 @@ struct AppErrorView: View {
         VStack(spacing: 20) {
             Image(systemName: "exclamationmark.triangle.fill")
                 .font(.system(size: 60))
-                .foregroundColor(.red)
+                .foregroundColor(AppTheme.Status.critical)
 
             Text("An error occurred while starting the application.")
                 .font(.headline)
@@ -23,6 +23,6 @@ struct AppErrorView: View {
         }
         .padding()
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(UIColor.systemBackground))
+        .background(AppTheme.Colors.appBackground)
     }
 }

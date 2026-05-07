@@ -215,7 +215,7 @@ struct SearchButton: View {
             view.frame(height: 44)
                 .padding(.horizontal)
         }
-        .contentShape(RoundedRectangle(cornerRadius: 22))
+        .contentShape(RoundedRectangle(cornerRadius: AppTheme.Radius.control))
         .regularGlassEffect(interactive: true)
     }
 }

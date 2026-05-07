@@ -74,10 +74,10 @@ struct ItemListView: View {
                                         view.overlay(alignment: .topLeading) {
                                             Text(item.ext.uppercased())
                                                 .font(.caption2.weight(.semibold))
-                                                .foregroundColor(.white.opacity(0.8))
+                                                .foregroundColor(AppTheme.Colors.imageOverlayText.opacity(0.8))
                                                 .padding(.horizontal, 6)
                                                 .padding(.vertical, 4)
-                                                .background(.black.opacity(0.5))
+                                                .background(AppTheme.Colors.imageOverlayShadow)
                                                 .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
                                                 .padding(5)
                                                 .allowsHitTesting(false)

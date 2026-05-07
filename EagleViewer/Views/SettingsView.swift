@@ -320,9 +320,9 @@ struct SyncStatusBanner: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .glassBackground(in: RoundedRectangle(cornerRadius: AppTheme.Radius.card, style: .continuous))
         .overlay {
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
+            RoundedRectangle(cornerRadius: AppTheme.Radius.card, style: .continuous)
                 .stroke(color.opacity(0.28), lineWidth: 1)
         }
         .accessibilityElement(children: .combine)
@@ -378,13 +378,13 @@ struct SyncStatusBanner: View {
     private var color: Color {
         switch library.lastImportStatus {
         case .partial, .cancelled:
-            return .orange
+            return AppTheme.Status.warning
         case .failed:
-            return .red
+            return AppTheme.Status.critical
         case .none:
-            return .secondary
+            return AppTheme.Status.neutral
         case .success:
-            return .green
+            return AppTheme.Status.success
         }
     }
 }

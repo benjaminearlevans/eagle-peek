@@ -57,7 +57,7 @@ struct ItemImageView: View {
 
     private func placeholder(systemImage: String?, showsProgress: Bool = false) -> some View {
         Rectangle()
-            .fill(Color.gray.opacity(0.18))
+            .fill(AppTheme.Colors.placeholderFill)
             .aspectRatio(aspectRatio, contentMode: .fit)
             .overlay {
                 if showsProgress {

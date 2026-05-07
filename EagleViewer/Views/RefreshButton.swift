@@ -57,7 +57,7 @@ struct RefreshButton: View {
                         Image(systemName: "exclamationmark.circle.fill")
                             .font(.caption2)
                             .foregroundStyle(attentionColor)
-                            .background(Color(.systemBackground), in: Circle())
+                            .background(AppTheme.Colors.appBackground, in: Circle())
                             .offset(x: 6, y: -6)
                             .accessibilityHidden(true)
                     }
@@ -96,11 +96,11 @@ struct RefreshButton: View {
     private var attentionColor: Color {
         switch library.lastImportStatus {
         case .failed:
-            return .red
+            return AppTheme.Status.critical
         case .partial, .cancelled:
-            return .orange
+            return AppTheme.Status.warning
         case .none, .success:
-            return .secondary
+            return AppTheme.Status.neutral
         }
     }
 
