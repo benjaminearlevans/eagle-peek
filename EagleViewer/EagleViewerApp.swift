@@ -66,6 +66,7 @@ struct EagleViewerApp: App {
                     }
                 }
                 .environment(\.rootSafeAreaInsets, rootSafeAreaInsets)
+                .preferredColorScheme(.dark)
             }
         }
     }

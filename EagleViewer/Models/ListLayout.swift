@@ -8,21 +8,17 @@
 import Foundation
 
 enum ListLayout: String, CaseIterable {
+    case col2 = "col2"
     case col3 = "col3"
-    case col4 = "col4"
-    case col6 = "col6"
     
     func columnCount(isPortrait: Bool) -> Int {
-        let baseCount = switch self {
+        switch self {
+        case .col2:
+            2
         case .col3:
             3
-        case .col4:
-            4
-        case .col6:
-            6
         }
-        return isPortrait ? baseCount : baseCount * 2
     }
     
-    static let defaultValue: ListLayout = .col3
+    static let defaultValue: ListLayout = .col2
 }

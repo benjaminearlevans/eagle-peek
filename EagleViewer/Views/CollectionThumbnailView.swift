@@ -17,12 +17,10 @@ struct CollectionThumbnailView<Content: View>: View {
 
     var cornerRadius: CGFloat {
         switch settingsManager.layout {
+        case .col2:
+            return 18
         case .col3:
             return 16
-        case .col4:
-            return 12
-        case .col6:
-            return 8
         }
     }
 
