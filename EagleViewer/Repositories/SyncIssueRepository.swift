@@ -39,6 +39,16 @@ struct SyncIssueRepository: SyncIssueStore {
         }
     }
 
+    func markOpenIssues(
+        for libraryId: Int64,
+        categories: [SyncIssueCategory],
+        as state: SyncIssueResolutionState
+    ) async throws {
+        try await dbWriter.write { db in
+            try SyncIssueRecord.markOpenIssues(db, libraryId: libraryId, categories: categories, as: state)
+        }
+    }
+
     func replaceOpenImportIssues(for libraryId: Int64, with issues: [SyncIssue]) async throws {
         try await dbWriter.write { db in
             try SyncIssueRecord.resolveOpenImportIssues(db, libraryId: libraryId)
@@ -122,6 +132,27 @@ struct SyncIssueRecord: Codable, FetchableRecord, PersistableRecord {
             .updateAll(
                 db,
                 Column("resolutionState").set(to: SyncIssueResolutionState.resolved.rawValue),
+                Column("updatedAt").set(to: Date())
+            )
+    }
+
+    static func markOpenIssues(
+        _ db: Database,
+        libraryId: Int64,
+        categories: [SyncIssueCategory],
+        as state: SyncIssueResolutionState
+    ) throws {
+        guard !categories.isEmpty else {
+            return
+        }
+
+        try SyncIssueRecord
+            .filter(Column("libraryId") == libraryId)
+            .filter(openStateFilter)
+            .filter(categories.map(\.rawValue).contains(Column("category")))
+            .updateAll(
+                db,
+                Column("resolutionState").set(to: state.rawValue),
                 Column("updatedAt").set(to: Date())
             )
     }

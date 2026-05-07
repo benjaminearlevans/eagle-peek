@@ -13,10 +13,12 @@ struct MainView: View {
     @EnvironmentObject private var metadataImportManager: MetadataImportManager
     @EnvironmentObject private var libraryFolderManager: LibraryFolderManager
     @EnvironmentObject private var eventCenter: EventCenter
+    @Environment(\.scenePhase) private var scenePhase
     @StateObject private var navigationManager = NavigationManager()
     @StateObject private var searchManager = SearchManager()
     @StateObject private var imageViewerManager = ImageViewerManager()
     @State private var libraryAccessTask: Task<Void, Error>?
+    @State private var queuedEditReplayTask: Task<Void, Never>?
 
     var body: some View {
         ZStack {
@@ -104,6 +106,11 @@ struct MainView: View {
                 eventCenter.post(.importProgressChanged)
             }
         }
+        .onChange(of: scenePhase) { _, newPhase in
+            if newPhase == .active {
+                replayQueuedEditsIfNeeded()
+            }
+        }
     }
 
     private func startImportingForCurrentLibrary() async {
@@ -112,5 +119,27 @@ struct MainView: View {
             activeLibraryURL: libraryFolderManager.activeLibraryURL,
             dbWriter: repositories.dbWriter
         )
+    }
+
+    private func replayQueuedEditsIfNeeded() {
+        guard library.isEagleAPISource,
+              let configuration = library.eagleAPIConfiguration,
+              !metadataImportManager.isImporting
+        else {
+            return
+        }
+
+        queuedEditReplayTask?.cancel()
+        queuedEditReplayTask = Task {
+            do {
+                let service = QueuedEditReplayService(
+                    dbWriter: repositories.dbWriter,
+                    apiClient: EagleAPIClient(configuration: configuration)
+                )
+                _ = try await service.replayPendingEdits(for: library.id)
+            } catch {
+                // Individual queued edit failures are persisted by SyncOperationReplayer.
+            }
+        }
     }
 }
