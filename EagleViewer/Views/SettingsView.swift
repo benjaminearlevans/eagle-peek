@@ -121,7 +121,7 @@ struct SettingsView: View {
                         .foregroundColor(.accentColor)
                     }
 
-                    if !library.useLocalStorage && libraryFolderManager.accessState == .closed {
+                    if !library.useLocalStorage && !library.isEagleAPISource && libraryFolderManager.accessState == .closed {
                         Label(
                             "Folder access is closed. Sync will try to reopen the saved library bookmark.",
                             systemImage: "folder.badge.questionmark"

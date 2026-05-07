@@ -20,7 +20,11 @@ private struct LibraryEnvironmentKey: EnvironmentKey {
         lastImportFailureCount: 0,
         lastImportFinishedAt: nil,
         lastSuccessfulImportAt: nil,
-        useLocalStorage: false
+        useLocalStorage: false,
+        sourceKind: .directFolder,
+        apiBaseURL: nil,
+        apiToken: nil,
+        apiLibraryPath: nil
     )
 }
 

@@ -42,6 +42,10 @@ struct NewLibrary: Codable, FetchableRecord, PersistableRecord {
     var bookmarkData: Data
     var sortOrder: Int
     var useLocalStorage: Bool
+    var sourceKind: LibrarySourceKind = .directFolder
+    var apiBaseURL: String?
+    var apiToken: String?
+    var apiLibraryPath: String?
 }
 
 struct Library: Codable, Identifiable, Equatable, FetchableRecord, MutablePersistableRecord {
@@ -57,4 +61,33 @@ struct Library: Codable, Identifiable, Equatable, FetchableRecord, MutablePersis
     var lastImportFinishedAt: Date?
     var lastSuccessfulImportAt: Date?
     var useLocalStorage: Bool
+    var sourceKind: LibrarySourceKind
+    var apiBaseURL: String?
+    var apiToken: String?
+    var apiLibraryPath: String?
+}
+
+extension Library {
+    var isEagleAPISource: Bool {
+        sourceKind == .eagleAPI
+    }
+
+    var eagleAPIConfiguration: EagleAPIConfiguration? {
+        guard sourceKind == .eagleAPI,
+              let apiBaseURL,
+              let baseURL = URL(string: apiBaseURL)
+        else {
+            return nil
+        }
+
+        return EagleAPIConfiguration(baseURL: baseURL, token: apiToken)
+    }
+
+    var eagleAPILibraryURL: URL? {
+        guard let apiLibraryPath, !apiLibraryPath.isEmpty else {
+            return nil
+        }
+
+        return URL(fileURLWithPath: apiLibraryPath, isDirectory: true)
+    }
 }

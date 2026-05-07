@@ -47,6 +47,19 @@ class LibraryFolderManager: ObservableObject {
             discardAccess()
             return
         }
+
+        if library.isEagleAPISource {
+            discardAccess()
+            currentBookmarkData = nil
+
+            if let libraryURL = library.eagleAPILibraryURL {
+                accessState = .open
+                currentLibraryURL = libraryURL
+                activeLibraryURL = libraryURL
+            }
+
+            return
+        }
         
         if library.useLocalStorage {
             // Stop access to previous library if any

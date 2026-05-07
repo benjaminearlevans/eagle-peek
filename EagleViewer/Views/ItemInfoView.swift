@@ -14,6 +14,9 @@ struct ItemInfoView: View {
     @Query<ItemFoldersRequest> private var folders: [Folder]
 
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.repositories) private var repositories
+    @State private var annotationDraft = ""
+    @State private var errorMessage: String?
 
     init(item: Item) {
         _item = Query(StoredItemRequest(id: item.id))
@@ -25,15 +28,26 @@ struct ItemInfoView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     ItemInfoOverview(item: item)
+                    ItemInfoRatingEditor(rating: item.star) { rating in
+                        updateRating(rating)
+                    }
 
                     ItemInfoFolders(folders: folders)
 
-                    if !item.tags.isEmpty {
-                        ItemInfoTags(tags: item.tags)
+                    ItemInfoTagEditor(
+                        tags: item.tags,
+                        addTag: addTag,
+                        removeTag: removeTag
+                    )
+
+                    ItemInfoAnnotationEditor(annotation: $annotationDraft) {
+                        updateAnnotation()
                     }
 
-                    if !item.annotation.isEmpty {
-                        ItemInfoAnnotation(annotation: item.annotation)
+                    if let errorMessage {
+                        Text(errorMessage)
+                            .font(.caption)
+                            .foregroundStyle(.red)
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -51,6 +65,58 @@ struct ItemInfoView: View {
                 }
             }
         }
+        .onChange(of: item.annotation, initial: true) {
+            annotationDraft = item.annotation
+        }
+    }
+
+    private var editingService: ItemEditingService {
+        ItemEditingService(dbWriter: repositories.dbWriter)
+    }
+
+    private func updateRating(_ rating: Int) {
+        Task {
+            await performEdit {
+                try await editingService.setRating(itemId: item.id, rating: rating)
+            }
+        }
+    }
+
+    private func addTag(_ tag: String) {
+        Task {
+            await performEdit {
+                try await editingService.replaceTags(itemId: item.id, tags: item.tags + [tag])
+            }
+        }
+    }
+
+    private func removeTag(_ tag: String) {
+        Task {
+            await performEdit {
+                try await editingService.replaceTags(
+                    itemId: item.id,
+                    tags: item.tags.filter { $0 != tag }
+                )
+            }
+        }
+    }
+
+    private func updateAnnotation() {
+        Task {
+            await performEdit {
+                try await editingService.updateAnnotation(itemId: item.id, annotation: annotationDraft)
+            }
+        }
+    }
+
+    @MainActor
+    private func performEdit(_ operation: () async throws -> Void) async {
+        do {
+            try await operation()
+            errorMessage = nil
+        } catch {
+            errorMessage = error.localizedDescription
+        }
     }
 }
 
@@ -64,15 +130,6 @@ struct ItemInfoOverview: View {
             Text(verbatim: metadataText)
                 .font(.caption)
                 .foregroundColor(.secondary)
-
-            if item.star > 0 {
-                HStack(spacing: 2) {
-                    ForEach(0 ..< 5, id: \.self) { i in
-                        Image(systemName: i < item.star ? "star.fill" : "star")
-                            .foregroundColor(.secondary)
-                    }
-                }
-            }
         }
     }
 
@@ -153,72 +210,6 @@ struct ItemInfoFolders: View {
         imageViewerManager.hide()
         DispatchQueue.main.async {
             navigationManager.path = [.uncategorized]
-        }
-    }
-}
-
-struct ItemInfoTags: View {
-    let tags: [String]
-
-    @Environment(\.dismiss) private var dismiss
-    @EnvironmentObject private var imageViewerManager: ImageViewerManager
-    @EnvironmentObject private var navigationManager: NavigationManager
-    @EnvironmentObject private var searchManager: SearchManager
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Tags")
-                .font(.caption)
-                .bold()
-                .foregroundColor(.secondary)
-            FlowLayout(alignment: .leading) {
-                ForEach(tags, id: \.self) { tag in
-                    Button(action: {
-                        moveToTag(tag)
-                    }) {
-                        Text(verbatim: tag)
-                            .lineLimit(1)
-                            .modifier(ItemInfoTag())
-                    }
-                }
-            }
-        }
-    }
-
-    private func moveToTag(_ tag: String) {
-        dismiss()
-        imageViewerManager.hide()
-        if navigationManager.path == [.all] {
-            searchManager.setSearchTextImmediately(tag)
-            searchManager.triggerScrollToTop()
-        } else {
-            DispatchQueue.main.async {
-                searchManager.keepSearchTextInNextNavigation(searchText: tag)
-                navigationManager.path = [.all]
-            }
-        }
-    }
-}
-
-struct ItemInfoAnnotation: View {
-    let annotation: String
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Notes")
-                .font(.caption)
-                .bold()
-                .foregroundColor(.secondary)
-            Text(verbatim: annotation)
-                .textSelection(.enabled)
-                .font(.caption)
-                .foregroundColor(.primary.opacity(0.6))
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding()
-                .background(
-                    RoundedRectangle(cornerRadius: AppTheme.Radius.small, style: .continuous)
-                        .fill(AppTheme.Colors.subtleFill)
-                )
         }
     }
 }

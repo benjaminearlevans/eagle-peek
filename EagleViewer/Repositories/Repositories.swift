@@ -18,6 +18,7 @@ struct Repositories {
     let folder: FolderRepository
     let searchHistory: SearchHistoryRepository
     let syncIssue: SyncIssueRepository
+    let syncOperation: SyncOperationRepository
 
     init(_ dbWriter: some DatabaseWriter) throws {
         self.dbWriter = dbWriter
@@ -25,6 +26,7 @@ struct Repositories {
         folder = FolderRepository(dbWriter)
         searchHistory = SearchHistoryRepository(dbWriter)
         syncIssue = SyncIssueRepository(dbWriter)
+        syncOperation = SyncOperationRepository(dbWriter)
 
         let migrator = Migration.getMigrator()
         try migrator.migrate(dbWriter)

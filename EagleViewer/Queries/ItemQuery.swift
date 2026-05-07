@@ -20,8 +20,7 @@ class ItemQuery {
     }
 
     static func uncategorizedItems(libraryId: Int64, sortOption: GlobalSortOption, searchText: String = "") -> QueryInterfaceRequest<Item> {
-        return searchItems(libraryId: libraryId, searchText: searchText)
-            .filter(sql: "NOT EXISTS (SELECT * FROM folderItem WHERE libraryId = item.libraryId AND itemId = item.itemId)")
+        return uncategorizedStoredItems(libraryId: libraryId, searchText: searchText)
             .order(sql: SortQuery.itemOrderSQL(by: sortOption))
             .select(itemColumns, as: Item.self)
     }
@@ -42,6 +41,11 @@ class ItemQuery {
         }
 
         return query
+    }
+
+    static func uncategorizedStoredItems(libraryId: Int64, searchText: String = "") -> QueryInterfaceRequest<StoredItem> {
+        searchItems(libraryId: libraryId, searchText: searchText)
+            .filter(sql: "NOT EXISTS (SELECT * FROM folderItem WHERE libraryId = item.libraryId AND itemId = item.itemId)")
     }
 
     static func searchTextFilters(searchText: String) -> [(sql: String, arguments: StatementArguments)] {
