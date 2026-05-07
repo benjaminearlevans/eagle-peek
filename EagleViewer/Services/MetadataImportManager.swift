@@ -159,6 +159,53 @@ class MetadataImportManager: ObservableObject {
                 return
             }
 
+            if library.isEagleAPISource {
+                do {
+                    try Task.checkCancellation()
+
+                    guard let configuration = library.eagleAPIConfiguration else {
+                        importStatus = .failed
+                        fatalErrorMessage = String(localized: "Eagle API connection details are incomplete.")
+                        return
+                    }
+
+                    let source = EagleAPILibrarySource(
+                        library: library,
+                        apiClient: EagleAPIClient(configuration: configuration)
+                    )
+                    let result = try await source.synchronize(
+                        library: library,
+                        dbWriter: dbWriter,
+                        progressHandler: { progress in
+                            await MainActor.run {
+                                self.importProgress = progress
+                            }
+                        }
+                    )
+                    let replayer = SyncOperationReplayer(
+                        queue: SyncOperationRepository(dbWriter),
+                        issueStore: SyncIssueRepository(dbWriter),
+                        apiClient: EagleAPIClient(configuration: configuration)
+                    )
+                    let replayResult = try await replayer.replayPendingOperations(for: library.id)
+
+                    importSummary = MetadataImporter.ImportRunSummary(syncResult: result)
+                    importSummary.appendReplayResult(replayResult)
+                    importStatus = importSummary.hasFailures ? .partial : .success
+                } catch {
+                    if error is CancellationError {
+                        Logger.app.info("Import task was cancelled")
+                        importStatus = .cancelled
+                    } else {
+                        Logger.app.warning("Failed to import metadata from Eagle API: \(error)")
+                        importStatus = .failed
+                        fatalErrorMessage = error.localizedDescription
+                    }
+                }
+
+                return
+            }
+
             guard let libraryURL else {
                 importStatus = .failed
                 fatalErrorMessage = LibraryFolderError.invalidBookmark.localizedDescription
@@ -222,5 +269,37 @@ class MetadataImportManager: ObservableObject {
     func cancelImporting() {
         currentImportTask?.cancel()
         currentImportTask = nil
+    }
+}
+
+private extension MetadataImporter.ImportRunSummary {
+    init(syncResult: LibrarySyncResult) {
+        self.init()
+        updatedItemCount = syncResult.updatedItemCount
+        deletedItemCount = syncResult.deletedItemCount
+
+        if syncResult.failureCount > 0 || syncResult.latestIssueMessage != nil {
+            let message = syncResult.latestIssueMessage
+                ?? String(localized: "\(syncResult.failureCount) Eagle API records could not sync.")
+            failedItems = [
+                MetadataImporter.ImportItemFailure(
+                    itemId: "",
+                    operation: String(localized: "Eagle API Sync"),
+                    message: message
+                ),
+            ]
+        }
+    }
+
+    mutating func appendReplayResult(_ replayResult: SyncOperationReplayResult) {
+        guard replayResult.hasIssues else {
+            return
+        }
+
+        failedItems.append(MetadataImporter.ImportItemFailure(
+            itemId: "",
+            operation: String(localized: "Queued Edits"),
+            message: String(localized: "\(replayResult.failedCount) edits failed and \(replayResult.conflictedCount) edits need review.")
+        ))
     }
 }

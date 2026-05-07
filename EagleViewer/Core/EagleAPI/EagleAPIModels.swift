@@ -21,6 +21,41 @@ struct EagleLibraryInfo: Decodable, Equatable {
     let applicationVersion: String?
 }
 
+struct EagleFolder: Decodable, Equatable {
+    let id: String?
+    let name: String?
+    let modificationTime: Int64?
+    let children: [EagleFolder]?
+    let orderBy: String?
+    let sortIncrease: Bool?
+    let coverId: String?
+}
+
+struct EagleFolderGetRequest: Encodable, Equatable {
+    var offset: Int
+    var limit: Int
+    var id: String?
+    var ids: [String]?
+    var isSelected: Bool?
+    var isRecent: Bool?
+
+    init(
+        offset: Int = 0,
+        limit: Int = 1_000,
+        id: String? = nil,
+        ids: [String]? = nil,
+        isSelected: Bool? = nil,
+        isRecent: Bool? = nil
+    ) {
+        self.offset = max(0, offset)
+        self.limit = min(max(1, limit), 1_000)
+        self.id = id
+        self.ids = ids
+        self.isSelected = isSelected
+        self.isRecent = isRecent
+    }
+}
+
 struct EaglePage<Element: Decodable & Equatable>: Decodable, Equatable {
     let data: [Element]
     let total: Int

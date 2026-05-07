@@ -83,6 +83,38 @@ final class EagleAPIClientTests: XCTestCase {
         XCTAssertTrue(page.hasNextPage)
     }
 
+    func test_folders_withPaginatedResponse_shouldDecodeFolderPage() async throws {
+        // Arrange
+        let data = Data("""
+        {
+          "status": "success",
+          "data": {
+            "data": [
+              {
+                "id": "FOLDER-A",
+                "name": "Design References",
+                "children": [],
+                "modificationTime": 100
+              }
+            ],
+            "total": 1,
+            "offset": 0,
+            "limit": 50
+          }
+        }
+        """.utf8)
+        let transport = MockEagleAPITransport(data: data)
+        let client = EagleAPIClient(configuration: .localhost(), transport: transport)
+
+        // Act
+        let page = try await client.folders(EagleFolderGetRequest(offset: 0, limit: 50))
+
+        // Assert
+        XCTAssertEqual(page.data.first?.id, "FOLDER-A")
+        XCTAssertEqual(page.data.first?.name, "Design References")
+        XCTAssertFalse(page.hasNextPage)
+    }
+
     func test_appInfo_withErrorResponse_shouldThrowAPIStatusMessage() async throws {
         // Arrange
         let data = Data("""

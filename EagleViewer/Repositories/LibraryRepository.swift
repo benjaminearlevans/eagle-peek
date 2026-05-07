@@ -15,12 +15,41 @@ struct LibraryRepository {
         self.dbWriter = dbWriter
     }
 
-    func create(name: String, bookmarkData: Data, useLocalStorage: Bool) async throws -> Library {
+    func create(
+        name: String,
+        bookmarkData: Data,
+        useLocalStorage: Bool,
+        sourceKind: LibrarySourceKind = .directFolder,
+        apiBaseURL: String? = nil,
+        apiToken: String? = nil,
+        apiLibraryPath: String? = nil
+    ) async throws -> Library {
         try await dbWriter.write { db in
             let maxSortOrder = try Int.fetchOne(db, sql: "SELECT COALESCE(MAX(sortOrder), -1) FROM library") ?? -1
-            let library = try NewLibrary(name: name, bookmarkData: bookmarkData, sortOrder: maxSortOrder + 1, useLocalStorage: useLocalStorage).insertAndFetch(db, as: Library.self)
+            let library = try NewLibrary(
+                name: name,
+                bookmarkData: bookmarkData,
+                sortOrder: maxSortOrder + 1,
+                useLocalStorage: useLocalStorage,
+                sourceKind: sourceKind,
+                apiBaseURL: apiBaseURL,
+                apiToken: apiToken,
+                apiLibraryPath: apiLibraryPath
+            ).insertAndFetch(db, as: Library.self)
             return library
         }
+    }
+
+    func createEagleAPI(name: String, baseURL: URL, token: String?, libraryPath: String?) async throws -> Library {
+        try await create(
+            name: name,
+            bookmarkData: Data(),
+            useLocalStorage: false,
+            sourceKind: .eagleAPI,
+            apiBaseURL: baseURL.absoluteString,
+            apiToken: token,
+            apiLibraryPath: libraryPath
+        )
     }
 
     func delete(id: Int64) async throws {

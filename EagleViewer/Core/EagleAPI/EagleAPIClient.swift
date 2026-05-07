@@ -39,6 +39,10 @@ struct EagleAPIClient {
         try await get("library/info")
     }
 
+    func folders(_ request: EagleFolderGetRequest = EagleFolderGetRequest()) async throws -> EaglePage<EagleFolder> {
+        try await post("folder/get", body: request)
+    }
+
     func items(_ request: EagleItemGetRequest = EagleItemGetRequest()) async throws -> EaglePage<EagleItem> {
         try await post("item/get", body: request)
     }

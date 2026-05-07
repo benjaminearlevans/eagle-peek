@@ -239,6 +239,28 @@ enum Migration {
             )
         }
 
+        migrator.registerMigration("add-library-source-configuration") { db in
+            let existingColumns = Set(try db.columns(in: "library").map(\.name))
+
+            try db.alter(table: "library") { t in
+                if !existingColumns.contains("sourceKind") {
+                    t.add(column: "sourceKind", .text).notNull().defaults(to: LibrarySourceKind.directFolder.rawValue)
+                }
+
+                if !existingColumns.contains("apiBaseURL") {
+                    t.add(column: "apiBaseURL", .text)
+                }
+
+                if !existingColumns.contains("apiToken") {
+                    t.add(column: "apiToken", .text)
+                }
+
+                if !existingColumns.contains("apiLibraryPath") {
+                    t.add(column: "apiLibraryPath", .text)
+                }
+            }
+        }
+
         return migrator
     }
 }

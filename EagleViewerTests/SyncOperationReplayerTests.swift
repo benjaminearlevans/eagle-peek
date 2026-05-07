@@ -23,11 +23,14 @@ final class SyncOperationReplayerTests: XCTestCase {
         let replayer = SyncOperationReplayer(queue: queue, issueStore: issueStore, apiClient: client)
 
         // Act
-        try await replayer.replayPendingOperations(for: operation.libraryId)
+        let result = try await replayer.replayPendingOperations(for: operation.libraryId)
 
         // Assert
         let operations = await queue.operations
         let requests = await transport.requests
+        XCTAssertEqual(result.appliedCount, 1)
+        XCTAssertEqual(result.failedCount, 0)
+        XCTAssertEqual(result.conflictedCount, 0)
         XCTAssertTrue(operations.isEmpty)
         XCTAssertEqual(requests.first?.url?.path, "/api/v2/item/update")
     }
@@ -55,11 +58,13 @@ final class SyncOperationReplayerTests: XCTestCase {
         let replayer = SyncOperationReplayer(queue: queue, issueStore: issueStore, apiClient: client)
 
         // Act
-        try await replayer.replayPendingOperations(for: operation.libraryId)
+        let result = try await replayer.replayPendingOperations(for: operation.libraryId)
 
         // Assert
         let operations = await queue.operations
         let issues = await issueStore.issues
+        XCTAssertEqual(result.appliedCount, 0)
+        XCTAssertEqual(result.conflictedCount, 1)
         XCTAssertEqual(operations.first?.state, .conflicted)
         XCTAssertEqual(issues.first?.category, .conflict)
     }

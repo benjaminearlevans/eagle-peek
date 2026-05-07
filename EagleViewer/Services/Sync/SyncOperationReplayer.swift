@@ -7,6 +7,16 @@
 
 import Foundation
 
+struct SyncOperationReplayResult: Equatable {
+    var appliedCount = 0
+    var failedCount = 0
+    var conflictedCount = 0
+
+    var hasIssues: Bool {
+        failedCount > 0 || conflictedCount > 0
+    }
+}
+
 struct SyncOperationReplayer {
     private let queue: SyncOperationQueue
     private let issueStore: SyncIssueStore
@@ -25,16 +35,26 @@ struct SyncOperationReplayer {
         self.operationEncoder = operationEncoder
     }
 
-    func replayPendingOperations(for libraryId: Int64) async throws {
+    func replayPendingOperations(for libraryId: Int64) async throws -> SyncOperationReplayResult {
         let operations = try await queue.pendingOperations(for: libraryId)
+        var result = SyncOperationReplayResult()
 
         for operation in operations {
             try Task.checkCancellation()
-            try await replay(operation)
+            switch try await replay(operation) {
+            case .applied:
+                result.appliedCount += 1
+            case .failed:
+                result.failedCount += 1
+            case .conflicted:
+                result.conflictedCount += 1
+            }
         }
+
+        return result
     }
 
-    private func replay(_ operation: SyncOperation) async throws {
+    private func replay(_ operation: SyncOperation) async throws -> ReplayOutcome {
         var applyingOperation = operation
         applyingOperation.state = .applying
         applyingOperation.updatedAt = Date()
@@ -44,17 +64,19 @@ struct SyncOperationReplayer {
         do {
             if try await hasConflict(operation) {
                 try await markConflicted(operation, message: String(localized: "Desktop item changed before queued edit synced."))
-                return
+                return .conflicted
             }
 
             try await apply(operation)
             try await queue.removeOperation(id: operation.id)
+            return .applied
         } catch {
             if error is CancellationError {
                 throw error
             }
 
             try await markFailed(operation, message: error.localizedDescription)
+            return .failed
         }
     }
 
@@ -120,4 +142,10 @@ struct SyncOperationReplayer {
             recoverySuggestion: String(localized: "Review the queued change before retrying.")
         ))
     }
+}
+
+private enum ReplayOutcome {
+    case applied
+    case failed
+    case conflicted
 }
