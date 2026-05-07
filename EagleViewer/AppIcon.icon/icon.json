@@ -1,36 +1,15 @@
 {
   "fill" : {
-    "linear-gradient" : [
-      "extended-gray:1.00000,1.00000",
-      "gray:0.94515,1.00000"
-    ],
-    "orientation" : {
-      "start" : {
-        "x" : 0.5,
-        "y" : 0
-      },
-      "stop" : {
-        "x" : 0.5,
-        "y" : 0.7
-      }
-    }
+    "automatic-gradient" : "extended-srgb:0.00000,0.53333,1.00000,1.00000"
   },
   "groups" : [
     {
       "layers" : [
         {
-          "blend-mode" : "normal",
-          "glass" : false,
+          "glass" : true,
           "hidden" : false,
-          "image-name" : "bird_color.svg",
-          "name" : "bird_color",
-          "position" : {
-            "scale" : 30,
-            "translation-in-points" : [
-              0,
-              0
-            ]
-          }
+          "image-name" : "ChatGPT Image May 7, 2026, 09_18_51 AM.png",
+          "name" : "ChatGPT Image May 7, 2026, 09_18_51 AM"
         }
       ],
       "shadow" : {
