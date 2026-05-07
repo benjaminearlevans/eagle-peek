@@ -16,6 +16,9 @@ struct ItemListView: View {
     @EnvironmentObject var imageViewerManager: ImageViewerManager
     @EnvironmentObject private var searchManager: SearchManager
     @State private var selectedFilter: ItemMediaFilter = .all
+    @State private var visibleItemCount = GalleryRenderWindow.defaultInitialLimit
+
+    private let renderWindow = GalleryRenderWindow()
 
     init(items: [Item], placeholderType: PlaceholderType = .none) {
         self.items = items
@@ -50,54 +53,76 @@ struct ItemListView: View {
             }
         } else {
             let availableFilters = ItemMediaFilter.availableFilters(for: items)
-            let visibleItems = selectedFilter.items(from: items)
+            let filteredItems = selectedFilter.items(from: items)
+            let renderedItems = Array(filteredItems.prefix(visibleItemCount))
 
             VStack(alignment: .leading, spacing: 12) {
                 if availableFilters.count > 1 {
-                    mediaFilterBar(availableFilters: availableFilters, visibleItemCount: visibleItems.count)
+                    mediaFilterBar(availableFilters: availableFilters, visibleItemCount: filteredItems.count)
                 }
 
-                if visibleItems.isEmpty {
+                if filteredItems.isEmpty {
                     NoFilteredItemsView(filter: selectedFilter) {
                         selectedFilter = .all
                     }
                 } else {
                     ScrollViewReader { proxy in
-                        AdaptiveGridView(isCollection: false) {
-                            ForEach(visibleItems) { item in
-                                ItemThumbnailView(item: item)
-                                    .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
-                                    .aspectRatio(1, contentMode: .fill)
-                                    .clipped()
-                                    .contentShape(Rectangle())
-                                    .if(needShowType(item: item)) { view in
-                                        view.overlay(alignment: .topLeading) {
-                                            Text(item.ext.uppercased())
-                                                .font(.caption2.weight(.semibold))
-                                                .foregroundColor(AppTheme.Colors.imageOverlayText.opacity(0.8))
-                                                .padding(.horizontal, 6)
-                                                .padding(.vertical, 4)
-                                                .background(AppTheme.Colors.imageOverlayShadow)
-                                                .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
-                                                .padding(5)
-                                                .allowsHitTesting(false)
-                                        }
-                                    }
-                                    .id(item.itemId)
-                                    .accessibilityLabel(item.name)
-                                    .accessibilityHint("Opens media viewer")
-                                    .onTapGesture {
-                                        searchManager.hideSearch()
-                                        imageViewerManager.show(item: item, items: visibleItems, onDismiss: { selectedItem in
-                                            if item != selectedItem {
-                                                proxy.scrollTo(selectedItem.itemId, anchor: .center)
+                        VStack(spacing: 12) {
+                            AdaptiveGridView(isCollection: false) {
+                                ForEach(renderedItems) { item in
+                                    ItemThumbnailView(item: item)
+                                        .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
+                                        .aspectRatio(1, contentMode: .fill)
+                                        .clipped()
+                                        .contentShape(Rectangle())
+                                        .if(needShowType(item: item)) { view in
+                                            view.overlay(alignment: .topLeading) {
+                                                Text(item.ext.uppercased())
+                                                    .font(.caption2.weight(.semibold))
+                                                    .foregroundColor(AppTheme.Colors.imageOverlayText.opacity(0.8))
+                                                    .padding(.horizontal, 6)
+                                                    .padding(.vertical, 4)
+                                                    .background(AppTheme.Colors.imageOverlayShadow)
+                                                    .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
+                                                    .padding(5)
+                                                    .allowsHitTesting(false)
                                             }
-                                        })
+                                        }
+                                        .id(item.itemId)
+                                        .accessibilityLabel(item.name)
+                                        .accessibilityHint("Opens media viewer")
+                                        .onTapGesture {
+                                            searchManager.hideSearch()
+                                            imageViewerManager.show(item: item, items: filteredItems, onDismiss: { selectedItem in
+                                                ensureVisible(selectedItem, in: filteredItems)
+
+                                                if item != selectedItem {
+                                                    DispatchQueue.main.async {
+                                                        proxy.scrollTo(selectedItem.itemId, anchor: .center)
+                                                    }
+                                                }
+                                            })
+                                        }
+                                        .onAppear {
+                                            if item == renderedItems.last {
+                                                loadMoreIfNeeded(totalCount: filteredItems.count)
+                                            }
+                                        }
+                                }
+                            }
+
+                            if renderedItems.count < filteredItems.count {
+                                GalleryLoadMoreFooter(
+                                    renderedCount: renderedItems.count,
+                                    totalCount: filteredItems.count,
+                                    loadMore: {
+                                        loadMoreIfNeeded(totalCount: filteredItems.count)
                                     }
+                                )
                             }
                         }
                         .onChange(of: searchManager.scrollToTopTrigger) {
-                            if let firstItem = visibleItems.first {
+                            if let firstItem = filteredItems.first {
                                 proxy.scrollTo(firstItem.itemId, anchor: .top)
                             }
                         }
@@ -109,7 +134,37 @@ struct ItemListView: View {
                     selectedFilter = .all
                 }
             }
+            .onChange(of: selectedFilter) {
+                resetRenderWindow(totalCount: filteredItems.count)
+            }
+            .onChange(of: items.count) {
+                resetRenderWindow(totalCount: filteredItems.count)
+            }
         }
+    }
+
+    private func resetRenderWindow(totalCount: Int) {
+        visibleItemCount = renderWindow.initialCount(total: totalCount)
+    }
+
+    private func loadMoreIfNeeded(totalCount: Int) {
+        guard visibleItemCount < totalCount else {
+            return
+        }
+
+        visibleItemCount = renderWindow.nextCount(current: visibleItemCount, total: totalCount)
+    }
+
+    private func ensureVisible(_ item: Item, in items: [Item]) {
+        guard let index = items.firstIndex(of: item) else {
+            return
+        }
+
+        visibleItemCount = renderWindow.countIncluding(
+            index: index,
+            current: visibleItemCount,
+            total: items.count
+        )
     }
 
     private func mediaFilterBar(availableFilters: [ItemMediaFilter], visibleItemCount: Int) -> some View {
@@ -136,64 +191,6 @@ struct ItemListView: View {
         }
 
         return String(localized: "\(visibleItemCount) of \(items.count) items")
-    }
-}
-
-private enum ItemMediaFilter: String, CaseIterable, Identifiable {
-    case all
-    case photos
-    case animated
-    case videos
-    case text
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .all:
-            return String(localized: "All")
-        case .photos:
-            return String(localized: "Photos")
-        case .animated:
-            return String(localized: "GIF")
-        case .videos:
-            return String(localized: "Videos")
-        case .text:
-            return String(localized: "Text")
-        }
-    }
-
-    func items(from items: [Item]) -> [Item] {
-        guard self != .all else {
-            return items
-        }
-
-        return items.filter(contains)
-    }
-
-    static func availableFilters(for items: [Item]) -> [ItemMediaFilter] {
-        var filters: [ItemMediaFilter] = [.all]
-        filters += ItemMediaFilter.allCases.dropFirst().filter { filter in
-            items.contains(where: filter.contains)
-        }
-        return filters
-    }
-
-    private func contains(item: Item) -> Bool {
-        switch self {
-        case .all:
-            return true
-        case .photos:
-            return !item.isVideo
-                && !item.isTextFile
-                && !item.isAnimatedImage
-        case .animated:
-            return item.isAnimatedImage
-        case .videos:
-            return item.isVideo
-        case .text:
-            return item.isTextFile
-        }
     }
 }
 
