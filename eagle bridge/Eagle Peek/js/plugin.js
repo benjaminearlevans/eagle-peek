@@ -81,7 +81,9 @@ function bridgeBaseURL() {
 }
 
 async function libraryInfo() {
-    const info = await eagle.library.info();
+    const info = typeof eagle.library?.info === "function"
+        ? await eagle.library.info()
+        : {};
     return {
         name: info.name || eagle.library.name || "Eagle Library",
         path: info.path || eagle.library.path || "",
@@ -117,6 +119,7 @@ async function refreshUI() {
         setText("libraryName", library.name);
         setText("bridgeURL", bridgeBaseURL());
         setText("pairingURL", pairingURL);
+        renderPairingQRCode(pairingURL);
     } catch (error) {
         setStatus("error", `Bridge running, but Eagle library info is unavailable: ${error.message}`);
         setText("bridgeURL", bridgeBaseURL());
@@ -130,6 +133,303 @@ function createPairingURL() {
     };
 
     return `eaglepeek://bridge-pair?baseURL=${encodeURIComponent(bridgeBaseURL())}&code=${encodeURIComponent(pairing.code)}`;
+}
+
+function utf8Bytes(value) {
+    if (typeof TextEncoder !== "undefined") {
+        return Array.from(new TextEncoder().encode(value));
+    }
+
+    return Array.from(Buffer.from(value, "utf8"));
+}
+
+function appendBits(bits, value, length) {
+    for (let index = length - 1; index >= 0; index -= 1) {
+        bits.push(((value >>> index) & 1) === 1);
+    }
+}
+
+function bitsToCodewords(bits) {
+    const codewords = [];
+    for (let index = 0; index < bits.length; index += 8) {
+        let value = 0;
+        for (let offset = 0; offset < 8; offset += 1) {
+            value = (value << 1) | (bits[index + offset] ? 1 : 0);
+        }
+        codewords.push(value);
+    }
+    return codewords;
+}
+
+function finiteFieldMultiply(left, right) {
+    let product = 0;
+    let a = left;
+    let b = right;
+    while (b > 0) {
+        if ((b & 1) !== 0) {
+            product ^= a;
+        }
+        a <<= 1;
+        if ((a & 0x100) !== 0) {
+            a ^= 0x11d;
+        }
+        b >>>= 1;
+    }
+    return product;
+}
+
+function reedSolomonDivisor(degree) {
+    const divisor = new Array(degree).fill(0);
+    divisor[degree - 1] = 1;
+
+    let root = 1;
+    for (let index = 0; index < degree; index += 1) {
+        for (let term = 0; term < degree; term += 1) {
+            divisor[term] = finiteFieldMultiply(divisor[term], root);
+            if (term + 1 < degree) {
+                divisor[term] ^= divisor[term + 1];
+            }
+        }
+        root = finiteFieldMultiply(root, 0x02);
+    }
+
+    return divisor;
+}
+
+function reedSolomonRemainder(data, degree) {
+    const divisor = reedSolomonDivisor(degree);
+    const result = new Array(degree).fill(0);
+
+    for (const value of data) {
+        const factor = value ^ result.shift();
+        result.push(0);
+
+        for (let index = 0; index < degree; index += 1) {
+            result[index] ^= finiteFieldMultiply(divisor[index], factor);
+        }
+    }
+
+    return result;
+}
+
+function calculateBCHCode(value, polynomial, bitCount) {
+    let code = value << bitCount;
+    while (Math.floor(Math.log2(code)) >= bitCount) {
+        const shift = Math.floor(Math.log2(code)) - bitCount;
+        code ^= polynomial << shift;
+    }
+    return (value << bitCount) | code;
+}
+
+function createBridgeQRCodeMatrix(value) {
+    const version = 8;
+    const size = 17 + 4 * version;
+    const dataCodewordsPerBlock = 97;
+    const blockCount = 2;
+    const errorCorrectionCodewords = 24;
+    const dataCodewordCount = dataCodewordsPerBlock * blockCount;
+    const bytes = utf8Bytes(value);
+
+    if (bytes.length > dataCodewordCount - 3) {
+        throw new Error("Pairing URL is too long for the bridge QR code.");
+    }
+
+    const modules = Array.from({ length: size }, () => new Array(size).fill(false));
+    const reserved = Array.from({ length: size }, () => new Array(size).fill(false));
+
+    function setModule(x, y, isDark, isReserved = true) {
+        if (x < 0 || y < 0 || x >= size || y >= size) {
+            return;
+        }
+        modules[y][x] = Boolean(isDark);
+        if (isReserved) {
+            reserved[y][x] = true;
+        }
+    }
+
+    function drawFinderPattern(left, top) {
+        for (let y = -1; y <= 7; y += 1) {
+            for (let x = -1; x <= 7; x += 1) {
+                const distance = Math.max(Math.abs(x - 3), Math.abs(y - 3));
+                setModule(left + x, top + y, distance !== 2 && distance !== 4);
+            }
+        }
+    }
+
+    function drawAlignmentPattern(centerX, centerY) {
+        for (let y = -2; y <= 2; y += 1) {
+            for (let x = -2; x <= 2; x += 1) {
+                const distance = Math.max(Math.abs(x), Math.abs(y));
+                setModule(centerX + x, centerY + y, distance !== 1);
+            }
+        }
+    }
+
+    drawFinderPattern(0, 0);
+    drawFinderPattern(size - 7, 0);
+    drawFinderPattern(0, size - 7);
+
+    for (let index = 0; index < size; index += 1) {
+        if (!reserved[index][6]) {
+            setModule(6, index, index % 2 === 0);
+        }
+        if (!reserved[6][index]) {
+            setModule(index, 6, index % 2 === 0);
+        }
+    }
+
+    for (const y of [6, 24, 42]) {
+        for (const x of [6, 24, 42]) {
+            const overlapsFinder = (x === 6 && y === 6)
+                || (x === 42 && y === 6)
+                || (x === 6 && y === 42);
+            if (!overlapsFinder) {
+                drawAlignmentPattern(x, y);
+            }
+        }
+    }
+
+    for (let index = 0; index < 9; index += 1) {
+        setModule(8, index, false);
+        setModule(index, 8, false);
+        setModule(size - 1 - index, 8, false);
+        setModule(8, size - 1 - index, false);
+    }
+    setModule(8, size - 8, true);
+
+    const versionCode = calculateBCHCode(version, 0x1f25, 12);
+    for (let index = 0; index < 18; index += 1) {
+        const isDark = ((versionCode >>> index) & 1) !== 0;
+        const a = size - 11 + (index % 3);
+        const b = Math.floor(index / 3);
+        setModule(a, b, isDark);
+        setModule(b, a, isDark);
+    }
+
+    const bits = [];
+    appendBits(bits, 0x4, 4);
+    appendBits(bits, bytes.length, 8);
+    for (const byte of bytes) {
+        appendBits(bits, byte, 8);
+    }
+    appendBits(bits, 0, Math.min(4, dataCodewordCount * 8 - bits.length));
+    while (bits.length % 8 !== 0) {
+        bits.push(false);
+    }
+
+    let padByte = 0xec;
+    while (bits.length < dataCodewordCount * 8) {
+        appendBits(bits, padByte, 8);
+        padByte = padByte === 0xec ? 0x11 : 0xec;
+    }
+
+    const dataCodewords = bitsToCodewords(bits);
+    const blocks = [];
+    for (let index = 0; index < blockCount; index += 1) {
+        const data = dataCodewords.slice(
+            index * dataCodewordsPerBlock,
+            (index + 1) * dataCodewordsPerBlock
+        );
+        blocks.push({
+            data,
+            errorCorrection: reedSolomonRemainder(data, errorCorrectionCodewords),
+        });
+    }
+
+    const finalCodewords = [];
+    for (let offset = 0; offset < dataCodewordsPerBlock; offset += 1) {
+        for (const block of blocks) {
+            finalCodewords.push(block.data[offset]);
+        }
+    }
+    for (let offset = 0; offset < errorCorrectionCodewords; offset += 1) {
+        for (const block of blocks) {
+            finalCodewords.push(block.errorCorrection[offset]);
+        }
+    }
+
+    const dataBits = [];
+    for (const codeword of finalCodewords) {
+        appendBits(dataBits, codeword, 8);
+    }
+
+    let bitIndex = 0;
+    let upward = true;
+    for (let right = size - 1; right >= 1; right -= 2) {
+        if (right === 6) {
+            right -= 1;
+        }
+
+        for (let vertical = 0; vertical < size; vertical += 1) {
+            const y = upward ? size - 1 - vertical : vertical;
+            for (let column = 0; column < 2; column += 1) {
+                const x = right - column;
+                if (reserved[y][x]) {
+                    continue;
+                }
+                const mask = (x + y) % 2 === 0;
+                modules[y][x] = (dataBits[bitIndex] || false) !== mask;
+                bitIndex += 1;
+            }
+        }
+        upward = !upward;
+    }
+
+    const formatCode = calculateBCHCode((0x1 << 3) | 0, 0x537, 10) ^ 0x5412;
+    function formatBit(index) {
+        return ((formatCode >>> index) & 1) !== 0;
+    }
+    for (let index = 0; index < 6; index += 1) {
+        setModule(8, index, formatBit(index));
+    }
+    setModule(8, 7, formatBit(6));
+    setModule(8, 8, formatBit(7));
+    setModule(7, 8, formatBit(8));
+    for (let index = 9; index < 15; index += 1) {
+        setModule(14 - index, 8, formatBit(index));
+    }
+    for (let index = 0; index < 8; index += 1) {
+        setModule(size - 1 - index, 8, formatBit(index));
+    }
+    for (let index = 8; index < 15; index += 1) {
+        setModule(8, size - 15 + index, formatBit(index));
+    }
+
+    return modules;
+}
+
+function renderPairingQRCode(value) {
+    const canvas = document.getElementById("pairingCanvas");
+    if (!canvas) {
+        return;
+    }
+
+    const context = canvas.getContext("2d");
+    if (!context) {
+        return;
+    }
+
+    try {
+        const modules = createBridgeQRCodeMatrix(value);
+        const quietZone = 4;
+        const scale = Math.floor(canvas.width / (modules.length + quietZone * 2));
+        const offset = Math.floor((canvas.width - modules.length * scale) / 2);
+
+        context.fillStyle = "#ffffff";
+        context.fillRect(0, 0, canvas.width, canvas.height);
+        context.fillStyle = "#000000";
+
+        for (let y = 0; y < modules.length; y += 1) {
+            for (let x = 0; x < modules.length; x += 1) {
+                if (modules[y][x]) {
+                    context.fillRect(offset + x * scale, offset + y * scale, scale, scale);
+                }
+            }
+        }
+    } catch (error) {
+        context.clearRect(0, 0, canvas.width, canvas.height);
+        setStatus("error", error.message);
+    }
 }
 
 function sendJSON(response, statusCode, payload) {
@@ -484,7 +784,7 @@ async function startBridge() {
 }
 
 eagle.onPluginCreate((plugin) => {
-    pluginPath = plugin.path;
+    pluginPath = plugin.path || process.cwd();
     loadState();
     startBridge();
 });
@@ -497,9 +797,11 @@ eagle.onPluginShow(() => {
     refreshUI();
 });
 
-eagle.onLibraryChanged(() => {
-    refreshUI();
-});
+if (typeof eagle.onLibraryChanged === "function") {
+    eagle.onLibraryChanged(() => {
+        refreshUI();
+    });
+}
 
 window.addEventListener("DOMContentLoaded", () => {
     const copyButton = document.getElementById("copyButton");

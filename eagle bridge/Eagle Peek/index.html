@@ -82,6 +82,14 @@
             padding: 10px;
         }
 
+        #pairingCanvas {
+            width: 224px;
+            height: 224px;
+            border-radius: 14px;
+            background: white;
+            padding: 12px;
+        }
+
         button {
             justify-self: start;
             border: 0;
@@ -133,7 +141,8 @@
 
         <section class="card">
             <h1>Pair iPhone</h1>
-            <p>Open Eagle Peek on iPhone, choose Eagle Bridge, then scan or paste this pairing link.</p>
+            <p>Open Eagle Peek on iPhone, choose Eagle Bridge, then scan this QR code or paste the pairing link.</p>
+            <canvas id="pairingCanvas" width="224" height="224" aria-label="Eagle Peek Bridge pairing QR code"></canvas>
             <code id="pairingURL">Waiting for bridge...</code>
             <button id="copyButton" type="button">Copy Pairing Link</button>
             <p>Pairing links expire after 10 minutes. Generate a fresh link by reopening this plugin window.</p>
