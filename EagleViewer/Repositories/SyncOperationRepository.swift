@@ -17,7 +17,7 @@ struct SyncOperationRepository: SyncOperationQueue {
 
     func enqueue(_ operation: SyncOperation) async throws {
         try await dbWriter.write { db in
-            try SyncOperationRecord(operation: operation).insert(db)
+            try Self.insert(operation, db: db)
         }
     }
 
@@ -77,6 +77,10 @@ struct SyncOperationRepository: SyncOperationQueue {
                 ]
             )
         }
+    }
+
+    static func insert(_ operation: SyncOperation, db: Database) throws {
+        try SyncOperationRecord(operation: operation).insert(db)
     }
 }
 
