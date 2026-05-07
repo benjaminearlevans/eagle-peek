@@ -10,7 +10,10 @@ import SwiftUI
 struct SettingsView: View {
     enum Destination: Hashable {
         case folderSelect
+        case syncIssues
     }
+
+    let initialDestination: Destination?
 
     @Environment(\.library) private var library
     @Environment(\.dismiss) private var dismiss
@@ -20,6 +23,11 @@ struct SettingsView: View {
     @EnvironmentObject private var libraryFolderManager: LibraryFolderManager
     @State private var showingLibraries = false
     @State private var path = NavigationPath()
+    @State private var didApplyInitialDestination = false
+
+    init(initialDestination: Destination? = nil) {
+        self.initialDestination = initialDestination
+    }
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -41,6 +49,17 @@ struct SettingsView: View {
                 }
 
                 Section("Sync") {
+                    NavigationLink(value: Destination.syncIssues) {
+                        Label {
+                            LabeledContent("Sync Issues") {
+                                syncIssueCountLabel
+                            }
+                        } icon: {
+                            Image(systemName: "exclamationmark.triangle")
+                                .foregroundStyle(syncAttentionColor)
+                        }
+                    }
+
                     SyncStatusSummaryView(
                         library: library,
                         isImporting: metadataImportManager.isImporting,
@@ -118,6 +137,8 @@ struct SettingsView: View {
                     LibraryFolderSelectView { name, bookmarkData in
                         updateLibraryFolder(name: name, bookmarkData: bookmarkData)
                     }
+                case .syncIssues:
+                    SyncIssuesView()
                 }
             }
             .navigationTitle("Settings")
@@ -132,18 +153,41 @@ struct SettingsView: View {
             .sheet(isPresented: $showingLibraries) {
                 LibrariesView()
             }
+            .onAppear {
+                applyInitialDestinationIfNeeded()
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var syncIssueCountLabel: some View {
+        if library.lastImportFailureCount > 0 {
+            Text(library.lastImportFailureCount.formatted())
+                .foregroundStyle(.secondary)
+        } else {
+            Text(library.lastImportStatus.displayText)
+                .foregroundStyle(.secondary)
         }
     }
 
     private var syncAttentionColor: Color {
         switch library.lastImportStatus {
         case .partial, .cancelled:
-            return .orange
+            return AppTheme.Status.warning
         case .failed:
-            return .red
+            return AppTheme.Status.critical
         case .none, .success:
-            return .secondary
+            return AppTheme.Status.neutral
         }
+    }
+
+    private func applyInitialDestinationIfNeeded() {
+        guard !didApplyInitialDestination, let initialDestination else {
+            return
+        }
+
+        didApplyInitialDestination = true
+        path.append(initialDestination)
     }
 
     private func startImporting(fullImport: Bool) {
@@ -278,13 +322,13 @@ struct SyncStatusSummaryView: View {
 
         switch library.lastImportStatus {
         case .none:
-            return .secondary
+            return AppTheme.Status.neutral
         case .success:
-            return .green
+            return AppTheme.Status.success
         case .partial, .cancelled:
-            return .orange
+            return AppTheme.Status.warning
         case .failed:
-            return .red
+            return AppTheme.Status.critical
         }
     }
 }
@@ -320,9 +364,9 @@ struct SyncStatusBanner: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .glassBackground(in: RoundedRectangle(cornerRadius: AppTheme.Radius.card, style: .continuous))
         .overlay {
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
+            RoundedRectangle(cornerRadius: AppTheme.Radius.card, style: .continuous)
                 .stroke(color.opacity(0.28), lineWidth: 1)
         }
         .accessibilityElement(children: .combine)
@@ -378,13 +422,13 @@ struct SyncStatusBanner: View {
     private var color: Color {
         switch library.lastImportStatus {
         case .partial, .cancelled:
-            return .orange
+            return AppTheme.Status.warning
         case .failed:
-            return .red
+            return AppTheme.Status.critical
         case .none:
-            return .secondary
+            return AppTheme.Status.neutral
         case .success:
-            return .green
+            return AppTheme.Status.success
         }
     }
 }

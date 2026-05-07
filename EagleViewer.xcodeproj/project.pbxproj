@@ -21,6 +21,7 @@
 
 /* Begin PBXFileReference section */
 		23408CAA2E592EBD00617E88 /* EagleViewer.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = EagleViewer.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		2A1000012F26000000E10001 /* EagleViewerTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = EagleViewerTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		237FA0F02E6119D500CECD8F /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Localizable.xcstrings; sourceTree = "<group>"; };
 		23FE24C52E763AF500ACF1F0 /* InfoPlist.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = InfoPlist.xcstrings; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -44,6 +45,11 @@
 			path = EagleViewer;
 			sourceTree = "<group>";
 		};
+		2A1000022F26000000E10001 /* EagleViewerTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = EagleViewerTests;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -62,6 +68,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		2A1000032F26000000E10001 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -71,6 +84,7 @@
 				23FE24C52E763AF500ACF1F0 /* InfoPlist.xcstrings */,
 				237FA0F02E6119D500CECD8F /* Localizable.xcstrings */,
 				23408CAC2E592EBD00617E88 /* EagleViewer */,
+				2A1000022F26000000E10001 /* EagleViewerTests */,
 				23408CAB2E592EBD00617E88 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -79,6 +93,7 @@
 			isa = PBXGroup;
 			children = (
 				23408CAA2E592EBD00617E88 /* EagleViewer.app */,
+				2A1000012F26000000E10001 /* EagleViewerTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -116,7 +131,40 @@
 			productReference = 23408CAA2E592EBD00617E88 /* EagleViewer.app */;
 			productType = "com.apple.product-type.application";
 		};
+		2A1000042F26000000E10001 /* EagleViewerTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 2A1000052F26000000E10001 /* Build configuration list for PBXNativeTarget "EagleViewerTests" */;
+			buildPhases = (
+				2A1000062F26000000E10001 /* Sources */,
+				2A1000032F26000000E10001 /* Frameworks */,
+				2A1000072F26000000E10001 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				2A1000082F26000000E10001 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				2A1000022F26000000E10001 /* EagleViewerTests */,
+			);
+			name = EagleViewerTests;
+			packageProductDependencies = (
+			);
+			productName = EagleViewerTests;
+			productReference = 2A1000012F26000000E10001 /* EagleViewerTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 /* End PBXNativeTarget section */
+
+/* Begin PBXContainerItemProxy section */
+		2A1000092F26000000E10001 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 23408CA22E592EBD00617E88 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 23408CA92E592EBD00617E88;
+			remoteInfo = EagleViewer;
+		};
+/* End PBXContainerItemProxy section */
 
 /* Begin PBXProject section */
 		23408CA22E592EBD00617E88 /* Project object */ = {
@@ -129,6 +177,10 @@
 				TargetAttributes = {
 					23408CA92E592EBD00617E88 = {
 						CreatedOnToolsVersion = 16.4;
+					};
+					2A1000042F26000000E10001 = {
+						CreatedOnToolsVersion = 16.4;
+						TestTargetID = 23408CA92E592EBD00617E88;
 					};
 				};
 			};
@@ -155,6 +207,7 @@
 			projectRoot = "";
 			targets = (
 				23408CA92E592EBD00617E88 /* EagleViewer */,
+				2A1000042F26000000E10001 /* EagleViewerTests */,
 			);
 		};
 /* End PBXProject section */
@@ -169,6 +222,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		2A1000072F26000000E10001 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
@@ -179,7 +239,22 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		2A1000062F26000000E10001 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		2A1000082F26000000E10001 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 23408CA92E592EBD00617E88 /* EagleViewer */;
+			targetProxy = 2A1000092F26000000E10001 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		23408CB32E592EBE00617E88 /* Debug */ = {
@@ -385,6 +460,58 @@
 			};
 			name = Release;
 		};
+		2A10000A2F26000000E10001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = SHSJ46XTY3;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.6;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.bnjmn.EaglePeekTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/EagleViewer.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/EagleViewer";
+			};
+			name = Debug;
+		};
+		2A10000B2F26000000E10001 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = SHSJ46XTY3;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.6;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.bnjmn.EaglePeekTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/EagleViewer.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/EagleViewer";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -402,6 +529,15 @@
 			buildConfigurations = (
 				23408CB62E592EBE00617E88 /* Debug */,
 				23408CB72E592EBE00617E88 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		2A1000052F26000000E10001 /* Build configuration list for PBXNativeTarget "EagleViewerTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				2A10000A2F26000000E10001 /* Debug */,
+				2A10000B2F26000000E10001 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

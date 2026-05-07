@@ -216,8 +216,8 @@ struct ItemInfoAnnotation: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding()
                 .background(
-                    RoundedRectangle(cornerRadius: 6)
-                        .fill(.gray.opacity(0.1))
+                    RoundedRectangle(cornerRadius: AppTheme.Radius.small, style: .continuous)
+                        .fill(AppTheme.Colors.subtleFill)
                 )
         }
     }
@@ -263,12 +263,12 @@ struct ItemInfoTag: ViewModifier {
             .padding(.horizontal, 12)
             .foregroundColor(.primary.opacity(0.6))
             .background(
-                RoundedRectangle(cornerRadius: 6)
-                    .fill(.gray.opacity(0.1))
+                RoundedRectangle(cornerRadius: AppTheme.Radius.small, style: .continuous)
+                    .fill(AppTheme.Colors.subtleFill)
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 6)
-                    .stroke(.gray.opacity(0.4))
+                RoundedRectangle(cornerRadius: AppTheme.Radius.small, style: .continuous)
+                    .stroke(AppTheme.Colors.separator)
             )
     }
 }

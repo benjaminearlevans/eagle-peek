@@ -10,37 +10,50 @@ import SwiftUI
 struct RegularGlassEffectModifier: ViewModifier {
     let interactive: Bool
     @GestureState private var isPressed = false
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
     @ViewBuilder
     func body(content: Content) -> some View {
-        if #available(iOS 26.0, *) {
+        let shape = RoundedRectangle(cornerRadius: AppTheme.Radius.control, style: .continuous)
+
+        if reduceTransparency {
+            interactiveFallback(content: content, shape: shape)
+        } else if #available(iOS 26.0, *) {
             if interactive {
                 content.glassEffect(.regular.interactive())
             } else {
                 content.glassEffect(.regular)
             }
         } else {
-            let shape = RoundedRectangle(cornerRadius: 22, style: .continuous)
-            let highlightColor = Color(white: 0.96)
+            interactiveFallback(content: content, shape: shape, usesMaterial: true)
+        }
+    }
 
-            if interactive {
-                content
-                    .background(.thinMaterial, in: shape)
-                    .overlay(
-                        shape
-                            .fill(highlightColor.opacity(isPressed ? 0.45 : 0))
-                    )
-                    .animation(.easeInOut(duration: 0.15), value: isPressed)
-                    .simultaneousGesture(
-                        DragGesture(minimumDistance: 0)
-                            .updating($isPressed) { _, state, _ in
-                                state = true
-                            }
-                    )
-            } else {
-                content
-                    .background(.thinMaterial, in: shape)
-            }
+    @ViewBuilder
+    private func interactiveFallback(
+        content: Content,
+        shape: RoundedRectangle,
+        usesMaterial: Bool = false
+    ) -> some View {
+        let base = content.background(
+            usesMaterial ? AnyShapeStyle(.thinMaterial) : AnyShapeStyle(AppTheme.Colors.glassFallbackFill),
+            in: shape
+        )
+
+        if interactive {
+            base
+                .overlay(
+                    shape.fill(AppTheme.Colors.glassPressedFill.opacity(isPressed ? 0.7 : 0))
+                )
+                .animation(.easeInOut(duration: 0.15), value: isPressed)
+                .simultaneousGesture(
+                    DragGesture(minimumDistance: 0)
+                        .updating($isPressed) { _, state, _ in
+                            state = true
+                        }
+                )
+        } else {
+            base
         }
     }
 }
@@ -51,23 +64,28 @@ extension View {
     }
 }
 
-struct GlassBackgroundModifier: ViewModifier {
-    let shape: any Shape
+struct GlassBackgroundModifier<BackgroundShape: Shape>: ViewModifier {
+    let shape: BackgroundShape
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
     @ViewBuilder
     func body(content: Content) -> some View {
-        if #available(iOS 26.0, *) {
+        if reduceTransparency {
+            content
+                .background(AppTheme.Colors.glassFallbackFill, in: shape)
+                .clipShape(shape)
+        } else if #available(iOS 26.0, *) {
             content.glassEffect(.regular, in: shape)
         } else {
             content
-                .background(.thinMaterial)
-                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .background(.thinMaterial, in: shape)
+                .clipShape(shape)
         }
     }
 }
 
 extension View {
-    func glassBackground(in shape: some Shape) -> some View {
+    func glassBackground<BackgroundShape: Shape>(in shape: BackgroundShape) -> some View {
         modifier(GlassBackgroundModifier(shape: shape))
     }
 }

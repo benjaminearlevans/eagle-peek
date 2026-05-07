@@ -24,6 +24,7 @@ struct ImageDetailView: View {
 
     @State private var isInfoPresented = false
     @State private var isNoUIBeforeTextItem: Bool?
+    @State private var toastMessage: String?
     
     private let prefetcher = ImagePrefetcher()
     @EnvironmentObject private var libraryFolderManager: LibraryFolderManager
@@ -135,9 +136,67 @@ struct ImageDetailView: View {
         items.firstIndex(where: { $0.itemId == selectedItem.itemId })
     }
 
+    private var navigationState: ViewerNavigationState {
+        ViewerNavigationState(currentIndex: selectedIndex, totalCount: items.count)
+    }
+
     private var viewerSubtitle: String {
         let position = (selectedIndex ?? 0) + 1
         return String(localized: "\(position) of \(items.count) - \(selectedItem.mediaKindLabel)")
+    }
+
+    private func selectItem(at index: Int) {
+        guard items.indices.contains(index) else {
+            return
+        }
+
+        selectedItem = items[index]
+    }
+
+    private func goToFirstItem() {
+        selectItem(at: 0)
+    }
+
+    private func goToPreviousItem() {
+        guard let index = navigationState.index(offsetBy: -1) else {
+            return
+        }
+
+        selectItem(at: index)
+    }
+
+    private func goToNextItem() {
+        guard let index = navigationState.index(offsetBy: 1) else {
+            return
+        }
+
+        selectItem(at: index)
+    }
+
+    private func goToLastItem() {
+        selectItem(at: items.count - 1)
+    }
+
+    private func toggleChrome() {
+        withAnimation(.easeInOut(duration: 0.2)) {
+            isNoUI.toggle()
+        }
+    }
+
+    private func showToast(_ message: String) {
+        withAnimation(.easeInOut(duration: 0.2)) {
+            toastMessage = message
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) {
+            guard toastMessage == message else {
+                return
+            }
+
+            withAnimation(.easeInOut(duration: 0.2)) {
+                toastMessage = nil
+            }
+        }
     }
     
     var body: some View {
@@ -309,6 +368,17 @@ struct ImageDetailView: View {
                     }
                     .transition(.opacity)
                 }
+
+                if let toastMessage, !isNoUI {
+                    VStack {
+                        Spacer()
+                        ViewerToastView(message: toastMessage)
+                            .padding(.bottom, 104)
+                    }
+                    .transition(.opacity.combined(with: .scale(scale: 0.96)))
+                    .allowsHitTesting(false)
+                    .accessibilityElement(children: .combine)
+                }
             }
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
@@ -328,7 +398,7 @@ struct ImageDetailView: View {
                     }
                 }
 
-                ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItemGroup(placement: .topBarTrailing) {
                     if let imageURL = getImageURL(for: selectedItem) {
                         ShareLink(item: imageURL) {
                             Image(systemName: "square.and.arrow.up")
@@ -336,6 +406,22 @@ struct ImageDetailView: View {
                         }
                         .accessibilityLabel("Share item")
                     }
+
+                    ViewerPowerToolsMenu(
+                        item: selectedItem,
+                        itemURL: getImageURL(for: selectedItem),
+                        isChromeHidden: isNoUI,
+                        navigationState: navigationState,
+                        showInfo: {
+                            isInfoPresented = true
+                        },
+                        toggleChrome: toggleChrome,
+                        goToFirst: goToFirstItem,
+                        goToPrevious: goToPreviousItem,
+                        goToNext: goToNextItem,
+                        goToLast: goToLastItem,
+                        showCopiedMessage: showToast
+                    )
                 }
             }
             .toolbar(isNoUI ? .hidden : .visible, for: .navigationBar)

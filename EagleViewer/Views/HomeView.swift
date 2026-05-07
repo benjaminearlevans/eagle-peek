@@ -26,11 +26,14 @@ struct HomeView: View {
         $folders.searchText.wrappedValue.isEmpty
     }
 
+    @State private var settingsInitialDestination: SettingsView.Destination?
+
     var body: some View {
         ScrollView {
             VStack(spacing: 16) {
                 if shouldShowSyncStatusBanner {
                     Button {
+                        settingsInitialDestination = .syncIssues
                         showingSettings = true
                     } label: {
                         SyncStatusBanner(library: library)
@@ -77,6 +80,7 @@ struct HomeView: View {
             ToolbarItemGroup(placement: .topBarTrailing) {
                 RefreshButton()
                 Button(action: {
+                    settingsInitialDestination = nil
                     showingSettings = true
                 }) {
                     Image(systemName: "gearshape")
@@ -87,8 +91,13 @@ struct HomeView: View {
         .sheet(isPresented: $showingLibraries) {
             LibrariesView()
         }
-        .fullScreenCover(isPresented: $showingSettings) {
-            SettingsView()
+        .fullScreenCover(
+            isPresented: $showingSettings,
+            onDismiss: {
+                settingsInitialDestination = nil
+            }
+        ) {
+            SettingsView(initialDestination: settingsInitialDestination)
         }
         .onChange(of: library.id, initial: true) {
             $folders.libraryId.wrappedValue = library.id
