@@ -100,7 +100,7 @@ struct EagleItemQueryRequest: Encodable, Equatable {
     }
 }
 
-struct EagleItemUpdateRequest: Encodable, Equatable {
+struct EagleItemUpdateRequest: Codable, Equatable {
     let id: String
     var name: String?
     var tags: [String]?

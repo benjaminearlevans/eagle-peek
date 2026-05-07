@@ -208,6 +208,37 @@ enum Migration {
             )
         }
 
+        migrator.registerMigration("create-sync-operation-queue") { db in
+            guard try !db.tableExists("syncOperation") else {
+                return
+            }
+
+            try db.create(table: "syncOperation") { t in
+                t.column("id", .text).primaryKey()
+                t.belongsTo("library", onDelete: .cascade).notNull()
+                t.column("itemId", .text)
+                t.column("kind", .text).notNull()
+                t.column("state", .text).notNull()
+                t.column("payload", .blob).notNull()
+                t.column("baselineModificationTime", .integer)
+                t.column("createdAt", .datetime).notNull()
+                t.column("updatedAt", .datetime).notNull()
+                t.column("failureMessage", .text)
+            }
+
+            try db.create(
+                index: "idx_syncOperation_library_state_createdAt",
+                on: "syncOperation",
+                columns: ["libraryId", "state", "createdAt"]
+            )
+
+            try db.create(
+                index: "idx_syncOperation_library_item",
+                on: "syncOperation",
+                columns: ["libraryId", "itemId"]
+            )
+        }
+
         return migrator
     }
 }
